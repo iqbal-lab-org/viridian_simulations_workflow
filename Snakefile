@@ -1,4 +1,5 @@
 import glob
+from joblib import Parallel, delayed
 import os
 import pandas as pd
 import pickle
@@ -22,7 +23,8 @@ rule VGsim_tree:
         iterations=config['VGsim']['iterations'],
         sample_size=config['VGsim']['sample_size']
     shell:
-        'python VGsim/vgsim.py {input.rate_file} -it {params.iterations} -pm {input.pp_population_model_file} {input.mg_population_model_file} -seed {params.seed} -nwk --sampleSize {params.sample_size}'
+        'python VGsim/vgsim.py {input.rate_file} -it {params.iterations} -pm {input.pp_population_model_file} \
+                {input.mg_population_model_file} -seed {params.seed} -nwk --sampleSize {params.sample_size}'
 
 rule phastSim_evolution:
     input:
@@ -33,7 +35,10 @@ rule phastSim_evolution:
     params:
         seed=config['phastSim']['seed']
     shell:
-        'mkdir {output} && phastSim --outpath {output}/ --seed {params.seed} --createFasta --createInfo --createNewick --createPhylip --treeFile {input.tree_file} --scale 0.333333333 --invariable 0.1 --alpha 0.1 --omegaAlpha 0.1 --hyperMutProbs 0.01 0.01 --hyperMutRates 2.0 20.0 --codon --scale 0.333333 --reference {input.reference_genome}'
+        'mkdir {output} && phastSim --outpath {output}/ --seed {params.seed} --createFasta \
+                --createInfo --createNewick --createPhylip --treeFile {input.tree_file} --scale 0.333333333 \
+                --invariable 0.1 --alpha 0.1 --omegaAlpha 0.1 --hyperMutProbs 0.01 0.01 --hyperMutRates 2.0 20.0 --codon \
+                --scale 0.333333 --reference {input.reference_genome}'
 
 rule split_sequences:
     input:
@@ -113,23 +118,37 @@ rule ART_reads:
         rules.split_amplicons.output
     output:
         directory('ART_output')
+    params:
+        processes=config['processes']
     run:
-        if not os.path.exists(output[0]):
-            os.mkdir(output[0])
-        samples = glob.glob(input[0] + '/*/')
-        with open(os.path.join(input[0], 'amplicon_coverages.pickle'), 'rb') as coverageHandle:
-            sample_coverages = pickle.load(coverageHandle)
-        for genome in samples:
+        def simulate_reads(genome,
+                           output,
+                           sample_coverages):
             sample_name = os.path.basename(genome[:-1])
-            output_dir = os.path.join(output[0], sample_name)
+            output_dir = os.path.join(output, sample_name)
             if not os.path.exists(output_dir):
                 os.mkdir(output_dir)
             for amplicon in sample_coverages[sample_name]:
                 coverage = sample_coverages[sample_name][amplicon]
                 amplicon_file = os.path.join(genome, amplicon + '.fasta')
                 read_file = os.path.join(output_dir, amplicon)
-                subprocess_command = 'art_bin_MountRainier/art_illumina -ss HS10 -sam -i ' + amplicon_file + ' -mp -l 100 -f ' + str(coverage) + ' -m 2500 -s 50 -o ' + read_file
+                subprocess_command = 'art_bin_MountRainier/art_illumina --quiet -ss HS10 -sam -i ' + amplicon_file + \
+                        ' -mp -l 100 -f ' + str(coverage) + ' -m 2500 -s 50 -o ' + read_file
                 subprocess.run(subprocess_command, shell=True, check=True)
+
+        if not os.path.exists(output[0]):
+            os.mkdir(output[0])
+        samples = glob.glob(input[0] + '/*/')
+        with open(os.path.join(input[0], 'amplicon_coverages.pickle'), 'rb') as coverageHandle:
+            sample_coverages = pickle.load(coverageHandle)
+        # parallelise ART
+        job_list = [
+            samples[i:i + params.processes] for i in range(0, len(samples), params.processes)
+        ]
+        for subset in tqdm(job_list):
+            Parallel(n_jobs=params.processes)(delayed(simulate_reads)(genome,
+                                                                     output[0],
+                                                                     sample_coverages) for genome in subset)
 
 rule cat_reads:
     input:
@@ -167,8 +186,10 @@ rule run_viridian:
             fw_read = sample
             rv_read = sample.replace('_1.fq', '_2.fq')
             output_dir = os.path.join(output[0], os.path.basename(sample).replace('_1.fq', ''))
-            viridian_command = 'singularity run viridian/viridian.img assemble --min_mean_coverage 10 --reads_to_map ' + fw_read + ' --mates_to_map ' + rv_read + ' illumina ' + input[2] + ' ' + input[1] + ' ' + output_dir
-            #viridian_command = 'singularity run viridian_workflow/viridian_workflow.img run_one_sample ' + input[2] + ' ' + input[1] + ' ' + fw_read + ' ' + rv_read + ' ' + output_dir + '/'
+            viridian_command = 'singularity run viridian/viridian.img assemble --min_mean_coverage 10 --reads_to_map ' + fw_read + \
+                    ' --mates_to_map ' + rv_read + ' illumina ' + input[2] + ' ' + input[1] + ' ' + output_dir
+            #viridian_command = 'singularity run viridian_workflow/viridian_workflow.img run_one_sample ' + input[2] + ' ' + input[1] + \
+            #   ' ' + fw_read + ' ' + rv_read + ' ' + output_dir + '/'
             try:
                 shell(viridian_command)
             except:
@@ -180,6 +201,9 @@ rule clean_outputs:
         phastSim_output=rules.phastSim_evolution.output,
         split_sequences=rules.split_sequences.output,
         split_amplicons=rules.split_amplicons.output,
-        ART_output=rules.ART_reads.output
+        ART_output=rules.ART_reads.output,
+        cat_reads=rules.cat_reads.output,
+        run_viridian=rules.run_viridian.output
     shell:
-        'rm -rf {input.VGsim_output} {input.phastSim_output} {input.split_sequences} {input.split_amplicons}'
+        'rm -rf {input.VGsim_output} {input.phastSim_output} {input.split_sequences} {input.split_amplicons} \
+                {input.ART_output} {input.cat_reads} {input.run_viridian}'

@@ -134,11 +134,16 @@ clockwork
 # snakemake 
 .snakemake
 
-# sim packages
+# software
 VGsim
+art_bin_MountRainier
 
 # outputs
 phastSim_output
 simulated_genomes
 newick_output.nwk
 tree_populations.txt
+amplicon_sequences
+ART_output
+concatenated_reads
+viridian_output
