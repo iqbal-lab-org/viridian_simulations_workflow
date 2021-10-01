@@ -127,3 +127,18 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# vm
+clockwork
+
+# snakemake 
+.snakemake
+
+# sim packages
+VGsim
+
+# outputs
+phastSim_output
+simulated_genomes
+newick_output.nwk
+tree_populations.txt
