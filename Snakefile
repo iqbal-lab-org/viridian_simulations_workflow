@@ -144,7 +144,8 @@ rule ART_reads:
                 read_file = os.path.join(output_dir, amplicon)
                # subprocess_command = 'art_bin_MountRainier/art_illumina --quiet -sam -i ' + amplicon_file + \
                     #    ' --paired -l 250 -f ' + str(coverage) + ' -m 2500 -s 50 -o ' + read_file
-                subprocess_command = 'art_bin_MountRainier/art_illumina --quiet -amp -p -sam -na -i ' + amplicon_file + ' -l 250 -f ' + str(coverage) + ' -o ' + read_file
+                subprocess_command = 'art_bin_MountRainier/art_illumina --quiet -amp -p -sam -na -i ' + amplicon_file + \
+                        ' -l 250 -f ' + str(coverage) + ' -o ' + read_file
                 subprocess.run(subprocess_command, shell=True, check=True)
 
         if not os.path.exists(output[0]):
