@@ -1,16 +1,16 @@
-processes: 5
+processes: 7
+reference_genome: reference_genome.fasta
 
 VGsim:
   rate_file: VGsim/example/example.rt
-  iterations: 10000
+  iterations: 100000
   pp_population_model_file: VGsim/example/example.pp
   mg_population_model_file: VGsim/example/example.mg
   seed: 2020
-  sample_size: 5
+  sample_size: 2000
 
 phastSim:
   tree_file: newick_output.nwk
-  reference_genome: reference_genome.fasta
   output_dir: phastSim_output
   seed: 7
 

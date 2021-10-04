@@ -137,6 +137,9 @@ clockwork
 # software
 VGsim
 art_bin_MountRainier
+viridian
+racon
+viridian_workflow
 
 # outputs
 phastSim_output
