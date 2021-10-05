@@ -1,5 +1,10 @@
 # viridian_simulations_workflow
-Workflow to simulate SARS-CoV-2 amplicons and reads.
+
+A workflow to simulate SARS-CoV-2 amplicons and reads.
+
+# Overview
+
+A working pipeline to generate and assemble synthetic SARS-CoV-2 amplicons, with sequencing coverage conditional on the presence or absence of mismatches between primers and the target primer-binding region. VGsim is used to simulate positive selection on a SARS-CoV-2 reference sequence and neutral evolution along the tree then simulated with phastSim. A custom script splits the simulated genomes into amplicons based on the artic nCoV-2019 V3 primer scheme and sequencing coverage calculated based on whether mismatches are present between the primer and its target site. Read sequencing is simulated using art_illumina at a coverage determined by the previous step. Viridian_workflow is run to map the simulated reads to the reference sequence and assemble into a consensus sequence. A custom script then compares the viridian assemblies to the original simulated genomes output by VGsim to generate a distribution of base mismatches between the two assemblies.
 
 # Configuration
 
