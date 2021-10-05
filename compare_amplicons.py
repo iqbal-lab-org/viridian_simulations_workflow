@@ -7,6 +7,7 @@ import sys
 
 def trim_genome(primer_positions,
                 reference):
+    """Trim simulated genome to bases covered by the amplicon tiling scheme"""
     with open(reference, 'r') as ref:
         ref_seq = ''.join(ref.read().splitlines()[1:])
     scheme_start = int(primer_positions[0].split('\t')[1])
@@ -22,6 +23,7 @@ def count_errors(truth,
     if not len(truth) == len(consensus):
         sys.stderr.write('\n[WARNING]: Reference length=' + str(len(truth)) + \
             ', Assembly length=' + str(len(consensus)) + '\n')
+    # count number of mismatches between the viridian assembly and truth genome
     mismatches = 0
     for base in range(len(consensus)):
         if not truth[base] == consensus[base]:

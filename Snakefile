@@ -79,7 +79,7 @@ rule split_amplicons:
             primer_metadata = pos.read().splitlines()
         # combine tsv and bed file data into dfs of left and right primers and returns list of primer sequence pairs
         left_primers, right_primers, truth_seqs = get_primer_positions(primer_metadata, primer_df)
-        # create output directory 
+        # create output directory
         output_dir = output[0]
         if not os.path.exists(output_dir):
             os.mkdir(output_dir)
@@ -116,7 +116,7 @@ rule split_amplicons:
                                                     params.mismatch_coverage_mean,
                                                     params.mismatch_coverage_sd)
             sample_coverages[sample] = amplicon_coverages
-        # Pickle the output 
+        # Pickle the output
         sys.stderr.write("\nPickling the output\n")
         with open(os.path.join(output_dir, 'amplicon_coverages.pickle'), 'wb') as ampOut:
             # Pickle using the highest protocol available.
@@ -193,12 +193,12 @@ rule run_viridian:
     run:
         samples = glob.glob(os.path.join(input[0], '*_1.fq'))
         if not os.path.exists(output[0]):
-            os.mkdir(output[0])    
+            os.mkdir(output[0])
         for sample in samples:
             fw_read = sample
             rv_read = sample.replace('_1.fq', '_2.fq')
             output_dir = os.path.join(output[0], os.path.basename(sample).replace('_1.fq', ''))
-            #viridian_command = 'sudo singularity run viridian/viridian.img assemble --minimap_opts "-x sr -k 9 -w 6" --min_mean_coverage 10 \ 
+            #viridian_command = 'sudo singularity run viridian/viridian.img assemble --minimap_opts "-x sr -k 9 -w 6" --min_mean_coverage 10 \
                #     --reads_to_map ' + fw_read + ' --mates_to_map ' + rv_read + ' illumina ' + input[2] + ' ' + input[1] + ' ' + output_dir
             viridian_command = 'singularity run viridian_workflow/viridian_workflow.img run_one_sample ' + input[2] + ' ' + input[1] + \
                ' ' + fw_read + ' ' + rv_read + ' ' + output_dir + '/'
@@ -217,7 +217,7 @@ rule assess_assemblies:
         primer_positions=config['split_amplicons']['primer_positions']
     run:
         if not os.path.exists(output[0]):
-            os.mkdir(output[0]) 
+            os.mkdir(output[0])
         # import bed file as list
         with open(params.primer_positions, "r") as pos:
             primer_metadata = pos.read().splitlines()

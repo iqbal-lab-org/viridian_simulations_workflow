@@ -10,13 +10,15 @@ def populate_primer_dfs(left_primers, right_primers):
     """Several primers have alternate entries, this function duplicates rows so all primer combinations are considered"""
     left_basenames = np.array(['_'.join(name.split('_')[:2]) for name in list(left_primers['name'])])
     right_basenames = np.array(['_'.join(name.split('_')[:2]) for name in list(right_primers['name'])])
+    # generate 2D array of all left and right primer combinations and get indices of primer pairs
     matches = np.where([[left_basenames[i] == right_basenames[j] for j in range(0, len(right_basenames))] \
             for i in range(0, len(left_basenames))])
+    # generate extended dataframe considering all possible alternate primer pairs
     populated_left_df = left_primers.iloc[matches[0]].reset_index(drop=True)
     populated_right_df = right_primers.iloc[matches[1]].reset_index(drop=True)
     return populated_left_df, populated_right_df
 
-def get_primer_positions(primer_metadata, 
+def get_primer_positions(primer_metadata,
                          primer_df):
     """Get position of each primer and add to df"""
     primer_start = []
@@ -58,6 +60,7 @@ def get_primer_positions(primer_metadata,
         raise ValueError('Left and right primers are different lengths')
 
 def clean_genome(fasta_file):
+    """Split input fasta into sample name and sequence"""
     with open(fasta_file, 'r') as g:
         fasta = g.read().splitlines()
     # split fasta into sample name and sequence
@@ -66,14 +69,17 @@ def clean_genome(fasta_file):
     return sample_name, sample_sequence
 
 def reverse_complement(primer_sequence):
+    """Get reverse complement of sequence to detect mismatches"""
     base_dict = {'A':'T', 'C':'G', 'G':'C', 'T':'A'}
     complement = ''.join([base_dict[base] for base in primer_sequence])[::-1]
     return complement
 
-def split_amplicons(genome, 
+def split_amplicons(genome,
                     left_primers,
                     right_primers,
                     output_dir):
+    """Split a single genomic sequence into amplicons using a list of \
+        left primer start positions and right primer end positions"""
     sample_name, sample_sequence = clean_genome(genome)
     # extract 5'->3' amplicon sequence from sample sequence, including primers
     primer_pairs = {}
@@ -97,6 +103,8 @@ def determine_coverage(feature_dict,
                        match_coverage_sd,
                        mismatch_coverage_mean,
                        mismatch_coverage_sd):
+    """Sample amplicon coverages based on presence or absence of primer-binding mismatches \
+        and set amplicon coverage to 0 at a fixed probability"""
     amplicon_names = []
     coverages = []
     # determine coverage of each amplicon using a normal distribution
@@ -106,13 +114,13 @@ def determine_coverage(feature_dict,
         if feature_dict[primer_pair] == 1:
             coverage = -1
             while coverage < 0:
-                coverage = int(round(np.random.normal(loc=float(mismatch_coverage_mean), 
+                coverage = int(round(np.random.normal(loc=float(mismatch_coverage_mean),
                                                 scale=float(mismatch_coverage_sd))))
             coverages.append(coverage)
         elif feature_dict[primer_pair] == 0:
             coverage = -1
             while coverage < 0:
-                coverage = int(round(np.random.normal(loc=float(match_coverage_mean), 
+                coverage = int(round(np.random.normal(loc=float(match_coverage_mean),
                                                 scale=float(match_coverage_sd))))
             coverages.append(coverage)
         else:
@@ -170,7 +178,7 @@ def main():
                                                 5,
                                                 1)
         sample_coverages[sample] = amplicon_coverages
-    # Pickle the output 
+    # Pickle the output
     sys.stderr.write("\nPickling the output\n")
     with open(os.path.join(output_dir, 'amplicon_coverages.pickle'), 'wb') as ampOut:
         # Pickle using the highest protocol available.
