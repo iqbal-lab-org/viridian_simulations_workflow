@@ -23,7 +23,7 @@ def count_errors(truth,
         sys.stderr.write('\n[WARNING]: Reference length=' + str(len(truth)) + \
             ', Assembly length=' + str(len(consensus)) + '\n')
     mismatches = 0
-    for base in range(len(truth)):
+    for base in range(len(consensus)):
         if not truth[base] == consensus[base]:
             mismatches += 1
     return mismatches
@@ -43,7 +43,7 @@ def main():
         truth =  trim_genome(primer_metadata,
                             simulated_genome)
         mismatches = count_errors(truth,
-                                assem)
+                                  assem)
         mismatch_counts.append(mismatches)
     # visualise distribution of mismatch counts
     counted =  Counter(mismatch_counts)

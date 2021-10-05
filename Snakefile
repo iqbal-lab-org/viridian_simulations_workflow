@@ -199,7 +199,7 @@ rule run_viridian:
             rv_read = sample.replace('_1.fq', '_2.fq')
             output_dir = os.path.join(output[0], os.path.basename(sample).replace('_1.fq', ''))
             #viridian_command = 'sudo singularity run viridian/viridian.img assemble --minimap_opts "-x sr -k 9 -w 6" --min_mean_coverage 10 \ 
-                  #  --reads_to_map ' + fw_read + ' --mates_to_map ' + rv_read + ' illumina ' + input[2] + ' ' + input[1] + ' ' + output_dir
+               #     --reads_to_map ' + fw_read + ' --mates_to_map ' + rv_read + ' illumina ' + input[2] + ' ' + input[1] + ' ' + output_dir
             viridian_command = 'singularity run viridian_workflow/viridian_workflow.img run_one_sample ' + input[2] + ' ' + input[1] + \
                ' ' + fw_read + ' ' + rv_read + ' ' + output_dir + '/'
             try:
