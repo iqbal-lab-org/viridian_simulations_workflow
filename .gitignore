@@ -131,7 +131,7 @@ dmypy.json
 # vm
 clockwork
 
-# snakemake 
+# snakemake
 .snakemake
 
 # software
@@ -140,6 +140,9 @@ art_bin_MountRainier
 viridian
 racon
 viridian_workflow
+seq-align
+bwa
+minimap2
 
 # outputs
 phastSim_output

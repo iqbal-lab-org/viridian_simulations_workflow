@@ -10,7 +10,7 @@ import subprocess
 import sys
 from tqdm import tqdm
 
-from primer_snps import get_primer_positions, split_amplicons, determine_coverage
+from primer_snps import get_primer_positions, split_amplicons, determine_coverage, find_primer_positions
 from compare_amplicons import trim_genome, count_errors
 
 configfile: 'config.yml'
@@ -142,7 +142,7 @@ rule ART_reads:
                 coverage = sample_coverages[sample_name][amplicon]
                 amplicon_file = os.path.join(genome, amplicon + '.fasta')
                 read_file = os.path.join(output_dir, amplicon)
-               # subprocess_command = 'art_bin_MountRainier/art_illumina --quiet -sam -i ' + amplicon_file + \
+                # subprocess_command = 'art_bin_MountRainier/art_illumina --quiet -sam -i ' + amplicon_file + \
                     #    ' --paired -l 250 -f ' + str(coverage) + ' -m 2500 -s 50 -o ' + read_file
                 subprocess_command = 'art_bin_MountRainier/art_illumina --quiet -amp -p -sam -na -i ' + amplicon_file + \
                         ' -l 250 -f ' + str(coverage) + ' -o ' + read_file

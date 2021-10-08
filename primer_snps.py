@@ -3,7 +3,10 @@ import numpy as np
 import os
 import pandas as pd
 import pickle
+import shutil
+import subprocess
 import sys
+import tempfile
 from tqdm import tqdm
 
 def populate_primer_dfs(left_primers, right_primers):
@@ -74,21 +77,71 @@ def reverse_complement(primer_sequence):
     complement = ''.join([base_dict[base] for base in primer_sequence])[::-1]
     return complement
 
-def split_amplicons(genome,
+def align_primers(genomic_sequence,
+                  primer_df,
+                  output_dir):
+    """Align primers to genome using BWA and return start and end positions"""
+    aligned_starts = []
+    aligned_ends = []
+    for index, row in primer_df.iterrows():
+        temp_dir = tempfile.mkdtemp(dir=output_dir)
+        primer_fasta = os.path.join(temp_dir, row['name'] + '.fasta')
+        # write each primer sequence to fasta file
+        with open(primer_fasta, 'w') as primeSeq:
+            primeSeq.write('>' + row['name'] + '\n' + row['seq'])
+        alignment_file = os.path.join(temp_dir, row['name'] + '.sam')
+        bam_file = os.path.join(temp_dir, row['name'] + '.bam')
+        bed_file = os.path.join(temp_dir, row['name'] + '.bed')
+        # aln primer to genomic sequence using bwa, then convert to sam, bam and bed files
+        map_command = 'bwa index ' + genomic_sequence + ' && bwa aln ' + genomic_sequence + ' ' + primer_fasta
+        map_command += ' > ' + os.path.join(temp_dir, row['name'] + '.sai') + '; bwa samse ' + genomic_sequence
+        map_command += ' ' + os.path.join(temp_dir, row['name'] + '.sai') +  ' ' + primer_fasta
+        map_command += ' > ' + alignment_file + ' && samtools view -Sb ' + alignment_file + ' > ' + bam_file
+        map_command += ' && bamToBed -i ' + bam_file + ' > ' + bed_file
+        subprocess.run(map_command, shell=True, check=True)
+        with open(bed_file, 'r') as bedIn:
+            bed_content = bedIn.read().split('\t')
+        # extract start and end position of aligned primer
+        aligned_starts.append(int(bed_content[1]))
+        aligned_ends.append(int(bed_content[2]))
+        shutil.rmtree(temp_dir)
+    primer_df['start'] = aligned_starts
+    primer_df['end'] = aligned_ends
+    return primer_df
+
+def find_primer_positions(genomic_sequence,
+                          left_primers,
+                          right_primers,
+                          output_dir):
+    """Find primer start and stop positions by aligning to genome"""
+    aligned_left_primers = align_primers(genomic_sequence,
+                                         left_primers,
+                                         output_dir)
+    aligned_right_primers = align_primers(genomic_sequence,
+                                          right_primers,
+                                          output_dir)
+    return aligned_left_primers, aligned_right_primers
+
+def split_amplicons(genomic_sequence,
                     left_primers,
                     right_primers,
                     output_dir):
     """Split a single genomic sequence into amplicons using a list of \
         left primer start positions and right primer end positions"""
-    sample_name, sample_sequence = clean_genome(genome)
+    sample_name, sample_sequence = clean_genome(genomic_sequence)
+    # we need to map primers to the simulated genomes so INDELs are properly considered
+    aligned_left_primers, aligned_right_primers = find_primer_positions(genomic_sequence,
+                                                                        left_primers,
+                                                                        right_primers,
+                                                                        output_dir)
     # extract 5'->3' amplicon sequence from sample sequence, including primers
     primer_pairs = {}
-    for position in range(len(left_primers['start'])):
-        primer_id = left_primers['name'][position] + '---' + right_primers['name'][position]
-        amplicon = sample_sequence[left_primers['start'][position]: right_primers['end'][position]]
+    for position in range(len(aligned_left_primers['start'])):
+        primer_id = aligned_left_primers['name'][position] + '---' + aligned_right_primers['name'][position]
+        amplicon = sample_sequence[aligned_left_primers['start'][position]: aligned_right_primers['end'][position]]
         # also extract primer target sequences to detect mismatches
-        primer_targets = [amplicon[:int(left_primers['length'][position])], \
-                reverse_complement(amplicon[-int(right_primers['length'][position]):])]
+        primer_targets = [amplicon[:int(aligned_left_primers['length'][position])], \
+                reverse_complement(amplicon[-int(aligned_right_primers['length'][position]):])]
         primer_pairs[primer_id] = primer_targets
         # save each amplicon as a separate fasta
         if not os.path.exists(os.path.join(output_dir, sample_name)):
@@ -151,7 +204,7 @@ def main():
     output_dir = 'amplicon_sequences'
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
-    sys.stderr.write('\nSplitting simulated sequences into amplicons\n')
+    sys.stderr.write('\nAligning primers and splitting simulated sequences into amplicons\n')
     observed_primer_targets = {}
     for genomic_sequence in tqdm(sequence_files):
         # returns a nested dictionary of all primer targets in the sample
