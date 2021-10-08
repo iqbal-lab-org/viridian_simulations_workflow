@@ -7,7 +7,7 @@ VGsim:
   pp_population_model_file: VGsim/example/example.pp
   mg_population_model_file: VGsim/example/example.mg
   seed: 2020
-  sample_size: 20
+  sample_size: 5
 
 phastSim:
   tree_file: newick_output.nwk
@@ -22,6 +22,7 @@ split_amplicons:
   match_coverage_sd: 20
   mismatch_coverage_mean: 5
   mismatch_coverage_sd: 1
+  mismatch_probability: 0.001
 
 viridian_workflow:
   primer_bed: "V3/nCoV-artic-v3.bed"

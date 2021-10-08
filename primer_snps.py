@@ -3,6 +3,7 @@ import numpy as np
 import os
 import pandas as pd
 import pickle
+import random
 import shutil
 import subprocess
 import sys
@@ -122,9 +123,31 @@ def find_primer_positions(genomic_sequence,
                                           output_dir)
     return aligned_left_primers, aligned_right_primers
 
+def induce_mismatches(amplicon_sequence,
+                      left_primer_end,
+                      right_primer_start,
+                      mismatch_probability):
+    base_choices = ['A', 'C', 'T', 'G']
+    # decide whether to induce SNP in primer site
+    left_primer = amplicon_sequence[:left_primer_end]
+    for base in range(len(left_primer)):
+        if np.random.binomial(n=1, p=(mismatch_probability)) == 1:
+            amplicon_sequence = list(amplicon_sequence)
+            # pseudo-randomly decide a base to substitute
+            amplicon_sequence[base] = random.choice(base_choices)
+            amplicon_sequence = "".join(amplicon_sequence)
+    right_primer = amplicon_sequence[right_primer_start:]
+    for base in range(len(right_primer)):
+        if np.random.binomial(n=1, p=(mismatch_probability)) == 1:
+            amplicon_sequence = list(amplicon_sequence)
+            amplicon_sequence[right_primer_start + base] = random.choice(base_choices)
+            amplicon_sequence = "".join(amplicon_sequence)
+    return amplicon_sequence
+
 def split_amplicons(genomic_sequence,
                     left_primers,
                     right_primers,
+                    mismatch_probability,
                     output_dir):
     """Split a single genomic sequence into amplicons using a list of \
         left primer start positions and right primer end positions"""
@@ -139,6 +162,11 @@ def split_amplicons(genomic_sequence,
     for position in range(len(aligned_left_primers['start'])):
         primer_id = aligned_left_primers['name'][position] + '---' + aligned_right_primers['name'][position]
         amplicon = sample_sequence[aligned_left_primers['start'][position]: aligned_right_primers['end'][position]]
+        # introduce SNPs in the primer-binding region at a fixed probability
+        amplicon = induce_mismatches(amplicon,
+                                     aligned_left_primers['end'][position],
+                                     aligned_right_primers['start'][position],
+                                     mismatch_probability)
         # also extract primer target sequences to detect mismatches
         primer_targets = [amplicon[:int(aligned_left_primers['length'][position])], \
                 reverse_complement(amplicon[-int(aligned_right_primers['length'][position]):])]
@@ -211,6 +239,7 @@ def main():
         sample_primer_targets = split_amplicons(genomic_sequence,
                                                 left_primers,
                                                 right_primers,
+                                                0.05,
                                                 output_dir)
         observed_primer_targets.update(sample_primer_targets)
     # detect if there are any snps in the primer binding regions in our simulated samples

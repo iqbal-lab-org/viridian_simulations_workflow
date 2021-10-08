@@ -71,6 +71,7 @@ rule split_amplicons:
         match_coverage_sd=config['split_amplicons']['match_coverage_sd'],
         mismatch_coverage_mean=config['split_amplicons']['mismatch_coverage_mean'],
         mismatch_coverage_sd=config['split_amplicons']['mismatch_coverage_sd'],
+        mismatch_probability=config['split_amplicons']['mismatch_probability'],
         processes=config['processes']
     run:
         primer_df = pd.read_csv(params.primer_sequences, sep='\t')
@@ -95,6 +96,7 @@ rule split_amplicons:
             sample_primer_targets = Parallel(n_jobs=params.processes, prefer="threads")(delayed(split_amplicons)(genomic_sequence,
                                                                                                                 left_primers,
                                                                                                                 right_primers,
+                                                                                                                params.mismatch_probability,
                                                                                                                 output_dir) for genomic_sequence in subset)
             for elem in sample_primer_targets:
                 observed_primer_targets.update(elem)
@@ -190,22 +192,32 @@ rule run_viridian:
         reference_genome=config["reference_genome"]
     output:
         directory('viridian_output')
+    params:
+        processes=config['processes']
     run:
+        def call_vidian_workflow(primer_bed,
+                                 reference_genome,
+                                 sample,
+                                 output):
+            fw_read = sample
+            rv_read = sample.replace('_1.fq', '_2.fq')
+            output_dir = os.path.join(output, os.path.basename(sample).replace('_1.fq', ''))
+            viridian_command = 'singularity run viridian_workflow/viridian_workflow.img run_one_sample '
+            viridian_command += reference_genome + ' ' + primer_bed + ' ' + fw_read + ' ' + rv_read + ' ' + output_dir + '/'
+            subprocess.run(viridian_command, shell=True, check=True)
+
         samples = glob.glob(os.path.join(input[0], '*_1.fq'))
         if not os.path.exists(output[0]):
             os.mkdir(output[0])
-        for sample in samples:
-            fw_read = sample
-            rv_read = sample.replace('_1.fq', '_2.fq')
-            output_dir = os.path.join(output[0], os.path.basename(sample).replace('_1.fq', ''))
-            #viridian_command = 'sudo singularity run viridian/viridian.img assemble --minimap_opts "-x sr -k 9 -w 6" --min_mean_coverage 10 \
-               #     --reads_to_map ' + fw_read + ' --mates_to_map ' + rv_read + ' illumina ' + input[2] + ' ' + input[1] + ' ' + output_dir
-            viridian_command = 'singularity run viridian_workflow/viridian_workflow.img run_one_sample ' + input[2] + ' ' + input[1] + \
-               ' ' + fw_read + ' ' + rv_read + ' ' + output_dir + '/'
-            try:
-                shell(viridian_command)
-            except:
-                pass
+        # parallelise viridian
+        job_list = [
+            samples[i:i + params.processes] for i in range(0, len(samples), params.processes)
+        ]
+        for subset in job_list:
+            Parallel(n_jobs=params.processes, prefer="threads")(delayed(call_vidian_workflow)(input[1],
+                                                                                              input[2],
+                                                                                              sample,
+                                                                                              output[0]) for sample in subset)
 
 rule assess_assemblies:
     input:
