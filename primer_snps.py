@@ -1,4 +1,5 @@
 import glob
+from typing import Sequence
 import numpy as np
 import os
 import pandas as pd
@@ -128,6 +129,7 @@ def induce_mismatches(amplicon_sequence,
                       right_primer_start,
                       mismatch_probability):
     base_choices = ['A', 'C', 'T', 'G']
+    ini = amplicon_sequence
     # decide whether to induce SNP in primer site
     left_primer = amplicon_sequence[:left_primer_end]
     for base in range(len(left_primer)):
@@ -164,8 +166,8 @@ def split_amplicons(genomic_sequence,
         amplicon = sample_sequence[aligned_left_primers['start'][position]: aligned_right_primers['end'][position]]
         # introduce SNPs in the primer-binding region at a fixed probability
         amplicon = induce_mismatches(amplicon,
-                                     aligned_left_primers['end'][position],
-                                     aligned_right_primers['start'][position],
+                                     aligned_left_primers['end'][position] - aligned_left_primers['start'][position],
+                                     aligned_right_primers['start'][position] - aligned_left_primers['start'][position],
                                      mismatch_probability)
         # also extract primer target sequences to detect mismatches
         primer_targets = [amplicon[:int(aligned_left_primers['length'][position])], \

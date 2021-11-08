@@ -1,5 +1,6 @@
 processes: 7
 reference_genome: reference_genome.fasta
+proportion_illumina: 0.5
 
 VGsim:
   rate_file: VGsim/example/example.rt
@@ -7,7 +8,7 @@ VGsim:
   pp_population_model_file: VGsim/example/example.pp
   mg_population_model_file: VGsim/example/example.mg
   seed: 2020
-  sample_size: 5
+  sample_size: 6
 
 phastSim:
   tree_file: newick_output.nwk

@@ -134,6 +134,14 @@ clockwork
 # snakemake
 .snakemake
 
+# reference genome index
+reference_genome.fasta.amb
+reference_genome.fasta.ann
+reference_genome.fasta.bwt
+reference_genome.fasta.fai
+reference_genome.fasta.pac
+reference_genome.fasta.sa
+
 # software
 VGsim
 art_bin_MountRainier
@@ -150,7 +158,7 @@ simulated_genomes
 newick_output.nwk
 tree_populations.txt
 amplicon_sequences
-ART_output
+read_output
 concatenated_reads
 viridian_output
 viridian_performance
