@@ -11,6 +11,7 @@ A working pipeline to generate and assemble synthetic SARS-CoV-2 amplicons, with
 ## General
 * ```processes```: Number of threads to extract amplicon sequences and run ART_illumina.
 * ```reference_genome```: A SARS-CoV-2 reference genome for simulations and read mapping.
+* ```proportion_illumina```: Proportion of total number of simulated genomes that will become simulated illumina reads. The remaining fraction become Nanopore simulated reads.
 
 ## VGsim:
 * ```rate_file```: A file specifying per haplotype birth, death, sampling and migration rates
