@@ -1,5 +1,6 @@
 from collections import Counter
 import glob
+import gzip
 from joblib import Parallel, delayed
 import math
 import matplotlib.pyplot as plt
@@ -8,11 +9,12 @@ import os
 import pandas as pd
 import pickle
 import random
+import shutil
 import subprocess
 import sys
 from tqdm import tqdm
 
-from primer_snps import get_primer_positions, split_amplicons, determine_coverage, find_primer_positions
+from primer_snps import get_primer_positions, split_amplicons, determine_coverage
 from compare_amplicons import trim_genome, count_errors
 
 configfile: 'config.yml'
@@ -210,20 +212,39 @@ rule cat_reads:
     output:
         directory('concatenated_reads')
     run:
-        samples = glob.glob(input[0] + '/ART_output/*/')
+        art_samples = glob.glob(input[0] + '/ART_output/*/')
+        badread_samples = glob.glob(input[0] + '/Badread_output/*/')
         if not os.path.exists(output[0]):
             os.mkdir(output[0])
-        for genome in samples:
+            os.mkdir(os.path.join(output[0], "ART_output"))
+            os.mkdir(os.path.join(output[0], "Badread_output"))
+        # cat ART reads
+        for genome in art_samples:
             # concat forward reads
             forward_reads = sorted(glob.glob(os.path.join(genome, '*1.fq')))
-            forward_filename = os.path.join(output[0], os.path.basename(genome)) + '_1.fq'
+            forward_filename = os.path.join(output[0], 'ART_output', os.path.basename(genome[:-1])) + '_1.fq'
             fw_concat_command = 'cat ' + ' '.join(forward_reads) + ' > ' + forward_filename
             shell(fw_concat_command)
             # concat reverse reads
             reverse_reads = sorted(glob.glob(os.path.join(genome, '*2.fq')))
-            reverse_filename = os.path.join(output[0], os.path.basename(genome)) + '_2.fq'
+            reverse_filename = os.path.join(output[0], 'ART_output', os.path.basename(genome[:-1])) + '_2.fq'
             rv_concat_command = 'cat ' + ' '.join(reverse_reads) + ' > ' + reverse_filename
             shell(rv_concat_command)
+        # cat Badreads
+        for sample in badread_samples:
+            # concat reads
+            reads = sorted(glob.glob(os.path.join(sample, '*.fastq.gz')))
+            new_filenames = []
+            # gunzip read files for concatenation
+            for read_file in reads:
+                new_name = read_file.replace(".fastq.gz", ".fq")
+                with gzip.open(read_file, 'rb') as f_in:
+                    with open(new_name, 'wb') as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+                new_filenames.append(new_name)
+            filename = os.path.join(output[0], 'Badread_output', os.path.basename(sample[:-1])) + '.fq'
+            concat_command = 'cat ' + ' '.join(new_filenames) + ' > ' + filename
+            shell(concat_command)
 
 rule run_viridian:
     input:
@@ -235,65 +256,107 @@ rule run_viridian:
     params:
         processes=config['processes']
     run:
-        def call_vidian_workflow(primer_bed,
-                                 reference_genome,
-                                 sample,
-                                 output):
+        def illumina_viridian_workflow(primer_bed,
+                                       reference_genome,
+                                       sample,
+                                       output):
+            """Function to run viridian on ART read sets"""
             fw_read = sample
-            rv_read = sample.replace('_1.fq', '_2.fq')
+            rv_read = sample.replace('_1', '_2')
             output_dir = os.path.join(output, os.path.basename(sample).replace('_1.fq', ''))
-            viridian_command = 'singularity run viridian_workflow/viridian_workflow.img run_one_sample '
-            viridian_command += reference_genome + ' ' + primer_bed + ' ' + fw_read + ' ' + rv_read + ' ' + output_dir + '/'
+            viridian_command = "singularity run viridian_workflow/viridian_workflow.img run_one_sample \
+                    --tech illumina \
+                    --ref_fasta " + reference_genome + " \
+                    --reads1 " + fw_read +" \
+                    --reads2 " + rv_read + " \
+                    --outdir " + output_dir + "/"
             subprocess.run(viridian_command, shell=True, check=True)
-        samples = glob.glob(os.path.join(input[0], '*_1.fq'))
-        if not os.path.exists(output[0]):
-            os.mkdir(output[0])
-        # parallelise viridian
-        job_list = [
-            samples[i:i + params.processes] for i in range(0, len(samples), params.processes)
-        ]
-        for subset in job_list:
-            Parallel(n_jobs=params.processes, prefer="threads")(delayed(call_vidian_workflow)(input[1],
-                                                                                              input[2],
-                                                                                              sample,
-                                                                                              output[0]) for sample in subset)
 
+        def nanopore_viridian_workflow(primer_bed,
+                                       reference_genome,
+                                       sample,
+                                       output):
+            """Function to run viridian on Badread read sets"""
+            output_dir = os.path.join(output, os.path.basename(sample).replace('.fq', ''))
+            viridian_command = "singularity run viridian_workflow/viridian_workflow.img run_one_sample \
+                    --tech ont \
+                    --ref_fasta " + reference_genome + " \
+                    --reads " + sample + " \
+                    --outdir " + output_dir + "/"
+            subprocess.run(viridian_command, shell=True, check=True)
+
+        art_samples = glob.glob(os.path.join(input[0], "ART_output", '*_1.fq'))
+        badread_samples = glob.glob(os.path.join(input[0], "Badread_output", '*.fq'))
+        # make necessary directories
+        directories = [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]
+        if not os.path.exists(output[0]):
+            for directory in directories:
+                os.mkdir(directory)
+        # parallelise assembly of ART reads
+        art_list = [
+            art_samples[i:i + params.processes] for i in range(0, len(art_samples), params.processes)
+        ]
+        for art_set in art_list:
+            Parallel(n_jobs=params.processes, prefer="threads")(delayed(illumina_viridian_workflow)(input[1],
+                                                                                                    input[2],
+                                                                                                    sample,
+                                                                                                    os.path.join(output[0], "ART_assemblies")) for sample in art_set)
+        # parallelise assembly of Badread reads
+        badread_list = [
+            badread_samples[i:i + params.processes] for i in range(0, len(badread_samples), params.processes)
+        ]
+        for bad_set in badread_list:
+            Parallel(n_jobs=params.processes, prefer="threads")(delayed(nanopore_viridian_workflow)(input[1],
+                                                                                                    input[2],
+                                                                                                    sample,
+                                                                                                    os.path.join(output[0], "Badread_assemblies")) for sample in bad_set)
 rule assess_assemblies:
     input:
         viridian_assemblies=rules.run_viridian.output,
-        simulated_genomes=rules.split_sequences.output
+        simulated_genomes=rules.split_sequences.output,
+        reference_genome=config["reference_genome"]
     output:
         directory('viridian_performance')
     params:
         primer_positions=config['split_amplicons']['primer_positions']
     run:
+        directories = [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]
         if not os.path.exists(output[0]):
-            os.mkdir(output[0])
+            for folder in directories:
+                os.mkdir(folder)
         # import bed file as list
-        with open(params.primer_positions, "r") as pos:
-            primer_metadata = pos.read().splitlines()
+       # with open(params.primer_positions, "r") as pos:
+        #    primer_metadata = pos.read().splitlines()
         # list viridian-generated assemblies
-        assemblies = glob.glob(input[0] + '/*/')
+        art_assemblies = glob.glob(input[0] + '/ART_assemblies/*')
+        badread_assemblies = glob.glob(input[0] + '/Badread_assemblies/*')
+        for assem in art_assemblies + badread_assemblies:
+            vcf_file = os.path.join(assem, "variants.vcf")
+            truth_genome = os.path.join(input[1], os.path.basename(assem) + ".fasta")
+            output_dir = os.path.join(output[0], os.path.join(assem.split("/")[-2], os.path.basename(assem)))
+            varifier_command = "singularity run varifier/varifier.img vcf_eval " + truth_genome + " " + input[2] + " " + vcf_file + " " + output_dir
+            shell(varifier_command)
+
         # get truth set of amplicons from simulated sequences
-        mismatch_counts = []
-        for assem in assemblies:
-            simulated_genome = os.path.join(input[1], os.path.basename(assem[:-1]) + '.fasta')
-            truth =  trim_genome(primer_metadata,
-                                simulated_genome)
-            mismatches = count_errors(truth,
-                                    assem)
-            mismatch_counts.append(mismatches)
+       # mismatch_counts = []
+       # for assem in assemblies:
+         #   simulated_genome = os.path.join(input[1], os.path.basename(assem[:-1]) + '.fasta')
+         #   truth =  trim_genome(primer_metadata,
+         #                       simulated_genome)
+         #   mismatches = count_errors(truth,
+        #                            assem)
+         #   mismatch_counts.append(mismatches)
         # visualise distribution of mismatch counts
-        counted =  Counter(mismatch_counts)
-        pp = PdfPages(os.path.join(output[0], 'viridian_mismatch_counts.pdf'))
-        plt.figure()
-        plt.hist(x=counted, bins='auto', color='#0504aa', alpha=0.7, rwidth=0.85)
-        plt.grid(axis='y', alpha=0.75)
-        plt.xlabel('Mismatches')
-        plt.ylabel('Frequency')
-        plt.title('Distribution of base mismatches in truth genomes vs viridian assemblies')
-        pp.savefig()
-        pp.close()
+        #counted =  Counter(mismatch_counts)
+       # pp = PdfPages(os.path.join(output[0], 'viridian_mismatch_counts.pdf'))
+      #  plt.figure()
+       # plt.hist(x=counted, bins='auto', color='#0504aa', alpha=0.7, rwidth=0.85)
+       # plt.grid(axis='y', alpha=0.75)
+       # plt.xlabel('Mismatches')
+       # plt.ylabel('Frequency')
+       # plt.title('Distribution of base mismatches in truth genomes vs viridian assemblies')
+      #  pp.savefig()
+       # pp.close()
 
 rule clean_outputs:
     input:
