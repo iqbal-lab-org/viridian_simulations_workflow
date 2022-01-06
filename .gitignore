@@ -159,6 +159,7 @@ simulated_genomes
 newick_output.nwk
 tree_populations.txt
 amplicon_sequences
+updated_sequences
 read_output
 concatenated_reads
 viridian_output

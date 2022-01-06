@@ -1,5 +1,4 @@
-import glob
-from typing import Sequence
+import json
 import numpy as np
 import os
 import pandas as pd
@@ -125,32 +124,44 @@ def find_primer_positions(genomic_sequence,
     return aligned_left_primers, aligned_right_primers
 
 def induce_mismatches(amplicon_sequence,
-                      left_primer_end,
-                      right_primer_start,
+                      overlapping_PBS,
+                      sample_sequence,
                       mismatch_probability):
+    """Decide whether to induce SNP in the overlap of the adjacent amplicon's primer site"""
     base_choices = ['A', 'C', 'T', 'G']
-    ini = amplicon_sequence
-    # decide whether to induce SNP in primer site
-    left_primer = amplicon_sequence[:left_primer_end]
-    for base in range(len(left_primer)):
+    # keep track of if a mismatch has been induced
+    mismatch = 0
+    mismatch_positions = []
+    # get start position of overlapping PBS in the amplicon
+    overlap_start = amplicon_sequence.find(overlapping_PBS)
+    # induce mismatch in overlapping PBS of first amplicon but not the second
+    new_overlap = overlapping_PBS
+    for base in range(len(overlapping_PBS)):
         if np.random.binomial(n=1, p=(mismatch_probability)) == 1:
-            amplicon_sequence = list(amplicon_sequence)
+            new_overlap = list(new_overlap)
             # pseudo-randomly decide a base to substitute
-            amplicon_sequence[base] = random.choice(base_choices)
-            amplicon_sequence = "".join(amplicon_sequence)
-    right_primer = amplicon_sequence[right_primer_start:]
-    for base in range(len(right_primer)):
-        if np.random.binomial(n=1, p=(mismatch_probability)) == 1:
-            amplicon_sequence = list(amplicon_sequence)
-            amplicon_sequence[right_primer_start + base] = random.choice(base_choices)
-            amplicon_sequence = "".join(amplicon_sequence)
-    return amplicon_sequence
+            temp_choices = base_choices[:]
+            temp_choices.remove(new_overlap[base])
+            new_overlap[base] = random.choice(temp_choices)
+            new_overlap = "".join(new_overlap)
+            mismatch += 1
+            try:
+                mismatch_positions.append(overlap_start + base)
+            except:
+                raise ValueError("The primer sequence of the adjancent amplicon was not found")
+    # we need to replace the PBS of the second primer with the reference conditional on the mismatch
+    if not mismatch == 0:
+        # replace old overlap with the new overlap in the amplicon and the sample sequence
+        amplicon_sequence = amplicon_sequence.replace(overlapping_PBS, new_overlap)
+        sample_sequence = sample_sequence.replace(overlapping_PBS, new_overlap)
+    return amplicon_sequence, sample_sequence, mismatch_positions
 
 def split_amplicons(genomic_sequence,
                     left_primers,
                     right_primers,
                     mismatch_probability,
-                    output_dir):
+                    output_dir,
+                    truth_seqs):
     """Split a single genomic sequence into amplicons using a list of \
         left primer start positions and right primer end positions"""
     sample_name, sample_sequence = clean_genome(genomic_sequence)
@@ -159,16 +170,41 @@ def split_amplicons(genomic_sequence,
                                                                         left_primers,
                                                                         right_primers,
                                                                         output_dir)
-    # extract 5'->3' amplicon sequence from sample sequence, including primers
+    amplicon_sequences = {}
+    primer_df_len = len(aligned_left_primers['start'])
+    # a dictionary to keep track of the frequency and positions of error modes
+    amplicon_stats = {}
+    # extract target sequences to detect mismatches and save amplicon sequences
     primer_pairs = {}
-    for position in range(len(aligned_left_primers['start'])):
+    # extract 5'->3' amplicon sequence from sample sequence, including primers
+    for position in range(primer_df_len-1):
         primer_id = aligned_left_primers['name'][position] + '---' + aligned_right_primers['name'][position]
         amplicon = sample_sequence[aligned_left_primers['start'][position]: aligned_right_primers['end'][position]]
-        # introduce SNPs in the primer-binding region at a fixed probability
-        amplicon = induce_mismatches(amplicon,
-                                     aligned_left_primers['end'][position] - aligned_left_primers['start'][position],
-                                     aligned_right_primers['start'][position] - aligned_left_primers['start'][position],
-                                     mismatch_probability)
+        # get primer information for the primer binding site of the adjacent amplicon
+        overlapping_PBS = sample_sequence[aligned_left_primers['start'][position+1]: aligned_left_primers['end'][position+1]]
+        overlapping_primer_id = aligned_left_primers['name'][position+1] + '---' + aligned_right_primers['name'][position+1]
+        # introduce SNPs in the overlapping region of one amplicon at a fixed probability and replace the overlapping binding site with the primer sequence
+        amplicon, sample_sequence, mismatch_positions = induce_mismatches(amplicon,
+                                                                          overlapping_PBS,
+                                                                          sample_sequence,
+                                                                          mismatch_probability)
+        # add error mode to stats dictionary if a mismatch has been induced
+        if not primer_id in amplicon_stats:
+            amplicon_stats[primer_id] = {"overlap_mismatches": mismatch_positions}
+        else:
+            amplicon_stats[primer_id]["overlap_mismatches"] = mismatch_positions
+        # if an error needs to be made with this amplicon, replace the left hand primer binding site with the reference primer sequence
+        if not ("errors" in amplicon_stats[primer_id] and "reference_primer" in amplicon_stats[primer_id]["errors"]):
+            amplicon_stats[primer_id].update({"has_error": 0, "errors": []})
+        else:
+            # replaces primer binding site with the reference
+            amplicon = amplicon.replace(amplicon[:aligned_left_primers['end'][position]-aligned_left_primers['start'][position]], \
+                truth_seqs[primer_id][0])
+        # if there needs to be an error in the adjacent amplicon PBS, keep track of it
+        if not mismatch_positions == []:
+            amplicon_stats[overlapping_primer_id] = {"has_error": 1}
+            amplicon_stats[overlapping_primer_id]["errors"] = ["reference_primer"]
+        amplicon_sequences[primer_id] = amplicon
         # also extract primer target sequences to detect mismatches
         primer_targets = [amplicon[:int(aligned_left_primers['length'][position])], \
                 reverse_complement(amplicon[-int(aligned_right_primers['length'][position]):])]
@@ -178,9 +214,31 @@ def split_amplicons(genomic_sequence,
             os.mkdir(os.path.join(output_dir, sample_name))
         with open(os.path.join(output_dir, sample_name, primer_id + '.fasta'), 'w') as outFasta:
             outFasta.write('>' + primer_id + '\n' + amplicon)
-    return {sample_name: primer_pairs}
+    # add final amplicon with no induced mismatches
+    final_id = aligned_left_primers['name'][primer_df_len-1] + '---' + aligned_right_primers['name'][primer_df_len-1]
+    final_amplicon = sample_sequence[aligned_left_primers['start'][primer_df_len-1]: aligned_right_primers['end'][primer_df_len-1]]
+    if final_id in amplicon_stats and "errors" in amplicon_stats[final_id] and "reference_primer" in amplicon_stats[final_id]["errors"]:
+        final_amplicon = final_amplicon.replace(final_amplicon, truth_seqs[final_id][0])
+    else:
+        amplicon_stats.update({final_id: {"errors": [], "has_error": 0}})
+    amplicon_sequences[final_id] = final_amplicon
+    # extract final target
+    final_target = [final_amplicon[:int(aligned_left_primers['length'][position])], \
+                reverse_complement(final_amplicon[-int(aligned_right_primers['length'][position]):])]
+    primer_pairs[final_id] = final_target
+    # save final amplicon as a separate fasta
+    for folder in [os.path.join(output_dir, sample_name), "updated_sequences"]:
+        if not os.path.exists(folder):
+            os.mkdir(os.path.join(folder))
+    with open(os.path.join(output_dir, sample_name, final_id + '.fasta'), 'w') as outFasta:
+        outFasta.write('>' + final_id + '\n' + final_amplicon)
+    # save updated sample sequence with mismatches in primer binding sites
+    with open(os.path.join("updated_sequences", sample_name + ".fasta"), 'w') as outGenome:
+        outGenome.write(">" + sample_name + "\n" + sample_sequence)
+    return {sample_name: [primer_pairs, amplicon_stats]}
 
 def determine_coverage(feature_dict,
+                       amplicon_error_stats,
                        random_dropout_probability,
                        match_coverage_mean,
                        match_coverage_sd,
@@ -199,6 +257,8 @@ def determine_coverage(feature_dict,
             while coverage < 0:
                 coverage = int(round(np.random.normal(loc=float(mismatch_coverage_mean),
                                                 scale=float(mismatch_coverage_sd))))
+            amplicon_error_stats[primer_pair]['has_error'] = 1
+            amplicon_error_stats[primer_pair]["errors"].append("primer_SNP")
             coverages.append(coverage)
         elif feature_dict[primer_pair] == 0:
             coverage = -1
@@ -216,7 +276,11 @@ def determine_coverage(feature_dict,
     amplicon_coverages = {}
     for name in range(len(amplicon_names)):
         amplicon_coverages[amplicon_names[name]] = dropped_coverages[name]
-    return amplicon_coverages
+        amplicon_error_stats[amplicon_names[name]]["coverage"] = int(dropped_coverages[name])
+        if dropped_coverages[name] == 0:
+            amplicon_error_stats[amplicon_names[name]]['has_error'] = 1
+            amplicon_error_stats[amplicon_names[name]]["errors"].append("random_dropout")
+    return amplicon_coverages, amplicon_error_stats
 
 def main():
     # path of V3 artic primer metadata
@@ -235,15 +299,22 @@ def main():
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
     sys.stderr.write('\nAligning primers and splitting simulated sequences into amplicons\n')
-    observed_primer_targets = {}
+    result = {}
     for genomic_sequence in tqdm(sequence_files):
         # returns a nested dictionary of all primer targets in the sample
         sample_primer_targets = split_amplicons(genomic_sequence,
                                                 left_primers,
                                                 right_primers,
                                                 0.05,
-                                                output_dir)
-        observed_primer_targets.update(sample_primer_targets)
+                                                output_dir,
+                                                truth_seqs)
+        result.update(sample_primer_targets)
+    # separate primer sequences and amplicon stats
+    observed_primer_targets = {}
+    error_stats = {}
+    for sample in result.keys():
+        observed_primer_targets[sample] = result[sample][0]
+        error_stats[sample] = result[sample][1]
     # detect if there are any snps in the primer binding regions in our simulated samples
     sys.stderr.write("\nCalculating amplicon coverages\n")
     sample_coverages = {}
@@ -254,19 +325,26 @@ def main():
                 primer_snps[pair] = 1
             else:
                 primer_snps[pair] = 0
+        # isolate error stats for the sample
+        amplicon_error_stats = error_stats[sample]
         # generate dictionary of amplicon coverages, considering mismatches and random amplicon dropout
-        amplicon_coverages = determine_coverage(primer_snps,
-                                                0.01,
-                                                100,
-                                                20,
-                                                5,
-                                                1)
+        amplicon_coverages, amplicon_error_stats = determine_coverage(primer_snps,
+                                                                      amplicon_error_stats,
+                                                                      0.01,
+                                                                      100,
+                                                                      20,
+                                                                      5,
+                                                                      1)
         sample_coverages[sample] = amplicon_coverages
+        error_stats[sample] = amplicon_error_stats
     # Pickle the output
     sys.stderr.write("\nPickling the output\n")
     with open(os.path.join(output_dir, 'amplicon_coverages.pickle'), 'wb') as ampOut:
         # Pickle using the highest protocol available.
         pickle.dump(sample_coverages, ampOut, pickle.HIGHEST_PROTOCOL)
+    # save amplicon error statistics
+    with open(os.path.join(output_dir, 'amplicon_statistics.json'), 'w') as statOut:
+        statOut.write(json.dumps(error_stats))
 
 if __name__== '__main__':
     main()

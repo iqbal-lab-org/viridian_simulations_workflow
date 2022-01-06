@@ -2,7 +2,7 @@ from collections import Counter
 import glob
 import gzip
 from joblib import Parallel, delayed
-import math
+import json
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import os
@@ -15,7 +15,6 @@ import sys
 from tqdm import tqdm
 
 from primer_snps import get_primer_positions, split_amplicons, determine_coverage
-from compare_amplicons import trim_genome, count_errors
 
 configfile: 'config.yml'
 
@@ -91,7 +90,7 @@ rule split_amplicons:
         # split input genomic sequences into amplicons by left primer start and right primer end
         sequence_files = glob.glob(os.path.join(input[0], '*.fasta'))
         sys.stderr.write('\nSplitting simulated sequences into amplicons\n')
-        observed_primer_targets = {}
+        result = {}
         # parallelise amplicon splitting
         job_list = [
             sequence_files[i:i + params.processes] for i in range(0, len(sequence_files), params.processes)
@@ -101,9 +100,16 @@ rule split_amplicons:
                                                                                                                 left_primers,
                                                                                                                 right_primers,
                                                                                                                 params.mismatch_probability,
-                                                                                                                output_dir) for genomic_sequence in subset)
+                                                                                                                output_dir,
+                                                                                                                truth_seqs) for genomic_sequence in subset)
             for elem in sample_primer_targets:
-                observed_primer_targets.update(elem)
+                result.update(elem)
+        # separate primer sequences and amplicon stats
+        observed_primer_targets = {}
+        error_stats = {}
+        for sample in result.keys():
+            observed_primer_targets[sample] = result[sample][0]
+            error_stats[sample] = result[sample][1]
         # detect if there are any snps in the primer binding regions in our simulated samples
         sys.stderr.write("\nCalculating amplicon coverages\n")
         sample_coverages = {}
@@ -114,19 +120,26 @@ rule split_amplicons:
                     primer_snps[pair] = 1
                 else:
                     primer_snps[pair] = 0
+            # isolate error stats for the sample
+            amplicon_error_stats = error_stats[sample]
             # generate dictionary of amplicon coverages, considering mismatches and random amplicon dropout
-            amplicon_coverages = determine_coverage(primer_snps,
-                                                    params.random_dropout_probability,
-                                                    params.match_coverage_mean,
-                                                    params.match_coverage_sd,
-                                                    params.mismatch_coverage_mean,
-                                                    params.mismatch_coverage_sd)
+            amplicon_coverages, amplicon_error_stats = determine_coverage(primer_snps,
+                                                                          amplicon_error_stats,
+                                                                          params.random_dropout_probability,
+                                                                          params.match_coverage_mean,
+                                                                          params.match_coverage_sd,
+                                                                          params.mismatch_coverage_mean,
+                                                                          params.mismatch_coverage_sd)
             sample_coverages[sample] = amplicon_coverages
-        # Pickle the output
+            error_stats[sample] = amplicon_error_stats
+         # Pickle the output
         sys.stderr.write("\nPickling the output\n")
         with open(os.path.join(output_dir, 'amplicon_coverages.pickle'), 'wb') as ampOut:
             # Pickle using the highest protocol available.
             pickle.dump(sample_coverages, ampOut, pickle.HIGHEST_PROTOCOL)
+        # save amplicon error statistics
+        with open(os.path.join(output_dir, 'amplicon_statistics.json'), 'w') as statOut:
+            statOut.write(json.dumps(error_stats))
 
 rule simulate_reads:
     input:
@@ -313,7 +326,7 @@ rule run_viridian:
 rule assess_assemblies:
     input:
         viridian_assemblies=rules.run_viridian.output,
-        simulated_genomes=rules.split_sequences.output,
+        simulated_genomes=rules.split_amplicons.output,
         reference_genome=config["reference_genome"]
     output:
         directory('viridian_performance')
@@ -332,7 +345,7 @@ rule assess_assemblies:
         badread_assemblies = glob.glob(input[0] + '/Badread_assemblies/*')
         for assem in art_assemblies + badread_assemblies:
             vcf_file = os.path.join(assem, "variants.vcf")
-            truth_genome = os.path.join(input[1], os.path.basename(assem) + ".fasta")
+            truth_genome = os.path.join("updated_sequences", os.path.basename(assem) + ".fasta")
             output_dir = os.path.join(output[0], os.path.join(assem.split("/")[-2], os.path.basename(assem)))
             varifier_command = "singularity run varifier/varifier.img vcf_eval " + truth_genome + " " + input[2] + " " + vcf_file + " " + output_dir
             shell(varifier_command)

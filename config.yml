@@ -8,7 +8,7 @@ VGsim:
   pp_population_model_file: VGsim/example/example.pp
   mg_population_model_file: VGsim/example/example.mg
   seed: 2020
-  sample_size: 6
+  sample_size: 10
 
 phastSim:
   tree_file: newick_output.nwk
