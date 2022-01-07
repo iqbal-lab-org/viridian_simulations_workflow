@@ -1,6 +1,6 @@
 processes: 7
 reference_genome: reference_genome.fasta
-proportion_illumina: 0.5
+proportion_illumina: 1
 
 VGsim:
   rate_file: VGsim/example/example.rt
@@ -23,7 +23,6 @@ split_amplicons:
   match_coverage_sd: 20
   mismatch_coverage_mean: 5
   mismatch_coverage_sd: 1
-  mismatch_probability: 0.001
 
 viridian_workflow:
   primer_bed: "V3/nCoV-artic-v3.bed"

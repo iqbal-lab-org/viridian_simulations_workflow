@@ -163,4 +163,5 @@ updated_sequences
 read_output
 concatenated_reads
 viridian_output
+masked_assemblies
 viridian_performance

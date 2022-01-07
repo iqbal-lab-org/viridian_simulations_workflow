@@ -14,7 +14,7 @@ import subprocess
 import sys
 from tqdm import tqdm
 
-from primer_snps import get_primer_positions, split_amplicons, determine_coverage
+from error_modes import extract_amplicons, clean_genome
 
 configfile: 'config.yml'
 
@@ -74,70 +74,42 @@ rule split_amplicons:
         match_coverage_sd=config['split_amplicons']['match_coverage_sd'],
         mismatch_coverage_mean=config['split_amplicons']['mismatch_coverage_mean'],
         mismatch_coverage_sd=config['split_amplicons']['mismatch_coverage_sd'],
-        mismatch_probability=config['split_amplicons']['mismatch_probability'],
         processes=config['processes']
     run:
         primer_df = pd.read_csv(params.primer_sequences, sep='\t')
-        # import bed file as list
-        with open(params.primer_positions, "r") as pos:
-            primer_metadata = pos.read().splitlines()
-        # combine tsv and bed file data into dfs of left and right primers and returns list of primer sequence pairs
-        left_primers, right_primers, truth_seqs = get_primer_positions(primer_metadata, primer_df)
         # create output directory
         output_dir = output[0]
         if not os.path.exists(output_dir):
             os.mkdir(output_dir)
         # split input genomic sequences into amplicons by left primer start and right primer end
         sequence_files = glob.glob(os.path.join(input[0], '*.fasta'))
-        sys.stderr.write('\nSplitting simulated sequences into amplicons\n')
-        result = {}
+        sys.stderr.write('\nAligning primers and splitting simulated sequences into amplicons\n')
+        sample_coverages = {}
+        error_stats = {}
         # parallelise amplicon splitting
         job_list = [
             sequence_files[i:i + params.processes] for i in range(0, len(sequence_files), params.processes)
         ]
         for subset in tqdm(job_list):
-            sample_primer_targets = Parallel(n_jobs=params.processes, prefer="threads")(delayed(split_amplicons)(genomic_sequence,
-                                                                                                                left_primers,
-                                                                                                                right_primers,
-                                                                                                                params.mismatch_probability,
-                                                                                                                output_dir,
-                                                                                                                truth_seqs) for genomic_sequence in subset)
-            for elem in sample_primer_targets:
-                result.update(elem)
-        # separate primer sequences and amplicon stats
-        observed_primer_targets = {}
-        error_stats = {}
-        for sample in result.keys():
-            observed_primer_targets[sample] = result[sample][0]
-            error_stats[sample] = result[sample][1]
-        # detect if there are any snps in the primer binding regions in our simulated samples
-        sys.stderr.write("\nCalculating amplicon coverages\n")
-        sample_coverages = {}
-        for sample in tqdm(observed_primer_targets):
-            primer_snps = {}
-            for pair in truth_seqs:
-                if not observed_primer_targets[sample][pair] == truth_seqs[pair]:
-                    primer_snps[pair] = 1
-                else:
-                    primer_snps[pair] = 0
-            # isolate error stats for the sample
-            amplicon_error_stats = error_stats[sample]
-            # generate dictionary of amplicon coverages, considering mismatches and random amplicon dropout
-            amplicon_coverages, amplicon_error_stats = determine_coverage(primer_snps,
-                                                                          amplicon_error_stats,
-                                                                          params.random_dropout_probability,
-                                                                          params.match_coverage_mean,
-                                                                          params.match_coverage_sd,
-                                                                          params.mismatch_coverage_mean,
-                                                                          params.mismatch_coverage_sd)
-            sample_coverages[sample] = amplicon_coverages
-            error_stats[sample] = amplicon_error_stats
-         # Pickle the output
+            amplicon_results = Parallel(n_jobs=params.processes, prefer="threads")(delayed(extract_amplicons)(primer_df,
+                                                                                                              genomic_sequence,
+                                                                                                              params.random_dropout_probability,
+                                                                                                              params.match_coverage_mean,
+                                                                                                              params.match_coverage_sd,
+                                                                                                              params.mismatch_coverage_mean,
+                                                                                                              params.mismatch_coverage_sd,
+                                                                                                              output_dir) for genomic_sequence in subset)
+            for elem in amplicon_results:
+                 for sample in elem:
+                    sample_coverages[sample] = elem[sample][0]
+                    error_stats[sample] = elem[sample][1]
+        # Pickle the output
         sys.stderr.write("\nPickling the output\n")
         with open(os.path.join(output_dir, 'amplicon_coverages.pickle'), 'wb') as ampOut:
             # Pickle using the highest protocol available.
             pickle.dump(sample_coverages, ampOut, pickle.HIGHEST_PROTOCOL)
         # save amplicon error statistics
+        sys.stderr.write("\nWriting out error statistics\n")
         with open(os.path.join(output_dir, 'amplicon_statistics.json'), 'w') as statOut:
             statOut.write(json.dumps(error_stats))
 
@@ -262,15 +234,13 @@ rule cat_reads:
 rule run_viridian:
     input:
         simulated_genomes=rules.cat_reads.output,
-        primer_bed=config['viridian_workflow']['primer_bed'],
         reference_genome=config["reference_genome"]
     output:
         directory('viridian_output')
     params:
         processes=config['processes']
     run:
-        def illumina_viridian_workflow(primer_bed,
-                                       reference_genome,
+        def illumina_viridian_workflow(reference_genome,
                                        sample,
                                        output):
             """Function to run viridian on ART read sets"""
@@ -285,8 +255,7 @@ rule run_viridian:
                     --outdir " + output_dir + "/"
             subprocess.run(viridian_command, shell=True, check=True)
 
-        def nanopore_viridian_workflow(primer_bed,
-                                       reference_genome,
+        def nanopore_viridian_workflow(reference_genome,
                                        sample,
                                        output):
             """Function to run viridian on Badread read sets"""
@@ -311,7 +280,6 @@ rule run_viridian:
         ]
         for art_set in art_list:
             Parallel(n_jobs=params.processes, prefer="threads")(delayed(illumina_viridian_workflow)(input[1],
-                                                                                                    input[2],
                                                                                                     sample,
                                                                                                     os.path.join(output[0], "ART_assemblies")) for sample in art_set)
         # parallelise assembly of Badread reads
@@ -320,13 +288,54 @@ rule run_viridian:
         ]
         for bad_set in badread_list:
             Parallel(n_jobs=params.processes, prefer="threads")(delayed(nanopore_viridian_workflow)(input[1],
-                                                                                                    input[2],
                                                                                                     sample,
                                                                                                     os.path.join(output[0], "Badread_assemblies")) for sample in bad_set)
+
+rule mask_assemblies:
+    input:
+        simulated_genomes=rules.split_sequences.output,
+        amplicon_sequences=rules.split_amplicons.output
+    output:
+        directory("masked_assemblies")
+    run:
+        # make directory
+        if not os.path.exists(output[0]):
+            os.mkdir(output[0])
+        # import the amplicon statistics file to see which amplicons to mask
+        with open(os.path.join(input[1], "amplicon_statistics.json"), "r") as statIn:
+            amplicon_stats = json.loads(statIn.read())
+        # iterate through samples and check if amplicons have low coverage, if so then mask their sequence
+        for sample in amplicon_stats:
+            sample_stats = amplicon_stats[sample]
+            all_amplicons = list(sample_stats.keys())
+            # import the simulated squence
+            filename = str(sample)+".fasta"
+            sample_name, sample_sequence = clean_genome(os.path.join(input[0], filename))
+            sample_sequence = list(sample_sequence)
+            # look through the amplicon statistics to see if an amplicon needs to be masked
+            for amplicon in range(len(all_amplicons)-1):
+                if "primer_SNP" in sample_stats[all_amplicons[amplicon]]["errors"] \
+                    or "random_dropout" in sample_stats[all_amplicons[amplicon]]["errors"]:
+                    # we are masking regions with low coverage that are not covered by the adjacent amplicons
+                    if not (amplicon == 0 and amplicon == len(all_amplicons) - 1):
+                        mask_start = sample_stats[all_amplicons[amplicon-1]]["amplicon_end"]
+                        mask_end = sample_stats[all_amplicons[amplicon+1]]["amplicon_start"]
+                    elif amplicon == 0:
+                        mask_start = sample_stats[all_amplicons[amplicon]]["amplicon_start"]
+                        mask_end = sample_stats[all_amplicons[amplicon+1]]["amplicon_start"]
+                    else:
+                        mask_start = sample_stats[all_amplicons[amplicon-1]]["amplicon_end"]
+                        mask_end = sample_stats[all_amplicons[amplicon]]["amplicon_end"]
+                    # replace the masked sequence with Ns
+                    sample_sequence[mask_start:mask_end] = list("N"*(mask_end-mask_start))
+            # write out the masked simulated sequence
+            with open(os.path.join(output[0], filename), "w") as outGen:
+                outGen.write("\n".join([">" + sample_name, "".join(sample_sequence)]))
+
 rule assess_assemblies:
     input:
         viridian_assemblies=rules.run_viridian.output,
-        simulated_genomes=rules.split_amplicons.output,
+        simulated_genomes=rules.mask_assemblies.output,
         reference_genome=config["reference_genome"]
     output:
         directory('viridian_performance')
@@ -337,39 +346,14 @@ rule assess_assemblies:
         if not os.path.exists(output[0]):
             for folder in directories:
                 os.mkdir(folder)
-        # import bed file as list
-       # with open(params.primer_positions, "r") as pos:
-        #    primer_metadata = pos.read().splitlines()
-        # list viridian-generated assemblies
         art_assemblies = glob.glob(input[0] + '/ART_assemblies/*')
         badread_assemblies = glob.glob(input[0] + '/Badread_assemblies/*')
         for assem in art_assemblies + badread_assemblies:
             vcf_file = os.path.join(assem, "variants.vcf")
-            truth_genome = os.path.join("updated_sequences", os.path.basename(assem) + ".fasta")
+            truth_genome = os.path.join(input[1], os.path.basename(assem) + ".fasta")
             output_dir = os.path.join(output[0], os.path.join(assem.split("/")[-2], os.path.basename(assem)))
             varifier_command = "singularity run varifier/varifier.img vcf_eval " + truth_genome + " " + input[2] + " " + vcf_file + " " + output_dir
             shell(varifier_command)
-
-        # get truth set of amplicons from simulated sequences
-       # mismatch_counts = []
-       # for assem in assemblies:
-         #   simulated_genome = os.path.join(input[1], os.path.basename(assem[:-1]) + '.fasta')
-         #   truth =  trim_genome(primer_metadata,
-         #                       simulated_genome)
-         #   mismatches = count_errors(truth,
-        #                            assem)
-         #   mismatch_counts.append(mismatches)
-        # visualise distribution of mismatch counts
-        #counted =  Counter(mismatch_counts)
-       # pp = PdfPages(os.path.join(output[0], 'viridian_mismatch_counts.pdf'))
-      #  plt.figure()
-       # plt.hist(x=counted, bins='auto', color='#0504aa', alpha=0.7, rwidth=0.85)
-       # plt.grid(axis='y', alpha=0.75)
-       # plt.xlabel('Mismatches')
-       # plt.ylabel('Frequency')
-       # plt.title('Distribution of base mismatches in truth genomes vs viridian assemblies')
-      #  pp.savefig()
-       # pp.close()
 
 rule clean_outputs:
     input:
@@ -380,7 +364,8 @@ rule clean_outputs:
         read_output=rules.simulate_reads.output,
         cat_reads=rules.cat_reads.output,
         run_viridian=rules.run_viridian.output,
+        simulated_genomes=rules.mask_assemblies.output,
         viridian_eval=rules.assess_assemblies.output
     shell:
         'rm -rf {input.VGsim_output} {input.phastSim_output} {input.split_sequences} {input.split_amplicons} \
-                {input.read_output} {input.cat_reads} {input.run_viridian} {input.viridian_eval}'
+                {input.read_output} {input.cat_reads} {input.run_viridian} {input.simulated_genomes} {input.viridian_eval}'
