@@ -1,4 +1,3 @@
-import json
 import numpy as np
 import os
 import pandas as pd
@@ -10,6 +9,49 @@ import subprocess
 import sys
 import tempfile
 from tqdm import tqdm
+
+def find_primer_scheme(scheme):
+    """Determine the primer scheme and load the metadata"""
+    if scheme == "V3":
+        # path of V3 artic primer metadata
+        primer_sequences = "V3/nCoV-2019.tsv"
+        # import tsv file as pandas dataframe
+        primer_df = pd.read_csv(primer_sequences, sep='\t')
+        return primer_df
+    if "V4" in scheme:
+        # path of V4 artic primer metadata
+        primer_sequences = os.path.join(scheme, "SARS-CoV-2.primer.bed")
+        # import bed file as string
+        with open(primer_sequences, "r") as inV4:
+            primers = inV4.read().splitlines()
+        # extract primer names and sequences and convert to df
+        primer_dict = {"name": [], "seq": []}
+        for row in primers:
+            split = row.split("\t")
+            primer_dict["name"].append(split[3])
+            primer_dict["seq"].append(split[6])
+        if scheme == "V4":
+            return pd.DataFrame(primer_dict)
+        elif scheme == "V4.1":
+            with open(os.path.join(scheme, "SARS-CoV-2.primer_pairs.tsv")) as inTSV:
+                pairs = inTSV.read().splitlines()
+            primer_data = []
+            ordered_primer_names = []
+            # the order of the V4.1 primer scheme is a mess
+            for pair in pairs:
+                split_names = pair.split("\t")
+                for name in split_names:
+                    name = name.split("_alt")[0]
+                    ordered_primer_names += [name, name + "_alt1"]
+            # iterate through the correctly ordered names and get the sequence
+            for prospective_name in ordered_primer_names:
+                if prospective_name in primer_dict["name"]:
+                    primer_data.append((prospective_name, primer_dict["seq"][primer_dict["name"].index(prospective_name)]))
+            return pd.DataFrame(primer_data, columns=['name','seq'])
+        else:
+            ValueError('Only "V3", "V4" and "V4.1" primer schemes are supported')
+    else:
+        raise ValueError('Only "V3", "V4" and "V4.1" primer schemes are supported')
 
 def align_primers(genomic_sequence,
                   primer_df,
@@ -28,7 +70,7 @@ def align_primers(genomic_sequence,
         bam_file = os.path.join(temp_dir, row['name'] + '.bam')
         bed_file = os.path.join(temp_dir, row['name'] + '.bed')
         # aln primer to genomic sequence using bwa, then convert to sam, bam and bed files
-        map_command = 'bwa index ' + genomic_sequence + ' && bwa aln ' + genomic_sequence + ' ' + primer_fasta
+        map_command = 'bwa index ' + genomic_sequence + ' && bwa aln -n 0.1 ' + genomic_sequence + ' ' + primer_fasta
         map_command += ' > ' + os.path.join(temp_dir, row['name'] + '.sai') + '; bwa samse ' + genomic_sequence
         map_command += ' ' + os.path.join(temp_dir, row['name'] + '.sai') +  ' ' + primer_fasta
         map_command += ' > ' + alignment_file + ' && samtools view -Sb ' + alignment_file + ' > ' + bam_file
@@ -75,8 +117,7 @@ def clean_genome(fasta_file):
     sample_sequence = ''.join(fasta[1:])
     return sample_name, sample_sequence
 
-def refine_primers(sample_name,
-                   primer_df,
+def refine_primers(primer_df,
                    alignment_stats):
     """This function selects the best matching left and right primer for each amplicon \
         if both match, then the non-alternative primer is selected"""
@@ -148,8 +189,7 @@ def extract_amplicons(primer_df,
     # import the simulated squence
     sample_name, sample_sequence = clean_genome(sequence_file)
     # refine primers to the best hits
-    left_primers, right_primers = refine_primers(sample_name,
-                                                 aligned_primers,
+    left_primers, right_primers = refine_primers(aligned_primers,
                                                  alignment_stats)
     # a dictionary to keep track of the frequency and positions of error modes
     amplicon_stats = {}
@@ -223,11 +263,9 @@ def extract_amplicons(primer_df,
     return {str(sample_name): [amplicon_coverages, amplicon_stats]}
 
 def main():
-    # path of V3 artic primer metadata
-    primer_sequences = "V3/nCoV-2019.tsv"
-    # import tsv file as pandas dataframe
-    primer_df = pd.read_csv(primer_sequences, sep='\t')
-    sequence_files = ['8.fasta']
+    # import correct primers for primer scheme
+    primer_df = find_primer_scheme("V4.1")
+    sequence_files = ['1.fasta']
     output_dir = 'amplicon_sequences'
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
@@ -248,14 +286,14 @@ def main():
             sample_coverages[sample] = amplicon_results[sample][0]
             error_stats[sample] = amplicon_results[sample][1]
     # Pickle the output
-    sys.stderr.write("\nPickling the output\n")
+    sys.stderr.write("\nPickling the amplicon coverages\n")
     with open(os.path.join(output_dir, 'amplicon_coverages.pickle'), 'wb') as ampOut:
         # Pickle using the highest protocol available.
         pickle.dump(sample_coverages, ampOut, pickle.HIGHEST_PROTOCOL)
     # save amplicon error statistics
-    sys.stderr.write("\nWriting out error statistics\n")
-    with open(os.path.join(output_dir, 'amplicon_statistics.json'), 'w') as statOut:
-        statOut.write(json.dumps(error_stats))
+    sys.stderr.write("\Pickling the error statistics\n")
+    with open(os.path.join(output_dir, 'amplicon_statistics.pickle'), 'wb') as statOut:
+       pickle.dump(error_stats, statOut, pickle.HIGHEST_PROTOCOL)
 
 if __name__== '__main__':
     main()

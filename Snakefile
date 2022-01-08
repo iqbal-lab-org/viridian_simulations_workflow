@@ -14,7 +14,7 @@ import subprocess
 import sys
 from tqdm import tqdm
 
-from error_modes import extract_amplicons, clean_genome
+from error_modes import find_primer_scheme, extract_amplicons, clean_genome
 
 configfile: 'config.yml'
 
@@ -43,9 +43,9 @@ rule phastSim_evolution:
         seed=config['phastSim']['seed']
     shell:
         'mkdir {output} && phastSim --outpath {output}/ --seed {params.seed} --createFasta \
-                --createInfo --createNewick --createPhylip --treeFile {input.tree_file} --scale 0.333333333 \
-                --invariable 0.1 --alpha 0.01 --omegaAlpha 0.01 --hyperMutProbs 0.01 0.01 --hyperMutRates 2.0 20.0 --codon \
-                --scale 0.333333 --reference {input.reference_genome}'
+                --createInfo --createNewick --createPhylip --treeFile {input.tree_file} \
+                --invariable 0.1 --alpha 0.0002 --omegaAlpha 0.0002 --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 --codon \
+                --reference {input.reference_genome}'
 
 rule split_sequences:
     input:
@@ -67,8 +67,7 @@ rule split_amplicons:
     output:
         directory('amplicon_sequences')
     params:
-        primer_sequences=config['split_amplicons']['primer_sequences'],
-        primer_positions=config['split_amplicons']['primer_positions'],
+        primer_scheme=config['primer_scheme'],
         random_dropout_probability=config['split_amplicons']['random_dropout_probability'],
         match_coverage_mean=config['split_amplicons']['match_coverage_mean'],
         match_coverage_sd=config['split_amplicons']['match_coverage_sd'],
@@ -76,7 +75,8 @@ rule split_amplicons:
         mismatch_coverage_sd=config['split_amplicons']['mismatch_coverage_sd'],
         processes=config['processes']
     run:
-        primer_df = pd.read_csv(params.primer_sequences, sep='\t')
+         # import correct primers for primer scheme
+        primer_df = find_primer_scheme("V4.1")
         # create output directory
         output_dir = output[0]
         if not os.path.exists(output_dir):
@@ -339,8 +339,6 @@ rule assess_assemblies:
         reference_genome=config["reference_genome"]
     output:
         directory('viridian_performance')
-    params:
-        primer_positions=config['split_amplicons']['primer_positions']
     run:
         directories = [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]
         if not os.path.exists(output[0]):
