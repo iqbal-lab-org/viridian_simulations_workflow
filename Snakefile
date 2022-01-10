@@ -109,9 +109,9 @@ rule split_amplicons:
             # Pickle using the highest protocol available.
             pickle.dump(sample_coverages, ampOut, pickle.HIGHEST_PROTOCOL)
         # save amplicon error statistics
-        sys.stderr.write("\nWriting out error statistics\n")
-        with open(os.path.join(output_dir, 'amplicon_statistics.json'), 'w') as statOut:
-            statOut.write(json.dumps(error_stats))
+        sys.stderr.write("\Pickling the error statistics\n")
+        with open(os.path.join(output_dir, 'amplicon_statistics.pickle'), 'wb') as statOut:
+            pickle.dump(error_stats, statOut, pickle.HIGHEST_PROTOCOL)
 
 rule simulate_reads:
     input:
