@@ -1,6 +1,6 @@
 # viridian_simulations_workflow
 
-A workflow to simulate SARS-CoV-2 amplicons and reads.
+A workflow to simulate SARS-CoV-2 amplicons and reads for assembly with [viridian](https://github.com/iqbal-lab-org/viridian).
 
 # Overview
 
