@@ -33,3 +33,9 @@ A working pipeline to generate and assemble synthetic SARS-CoV-2 amplicons. Mism
 * ```match_coverage_sd```: Standard deviation of coverage for amplicons containing **no mismatches** in the primer-binding region.
 * ```mismatch_coverage_mean```: Mean coverage for amplicons containing **mismatches** in the primer-binding region.
 * ```mismatch_coverage_sd```: Standard deviation of coverage for amplicons containing **mismatches** in the primer-binding region.
+
+## simulate_reads:
+* ```illumina_read_length```: Length of ART Illumina reads.
+
+## mask_assemblies:
+* ```apply_mask```: Mask low coverage bases in the simulated truth genomes.

@@ -23,3 +23,9 @@ split_amplicons:
   match_coverage_sd: 20
   mismatch_coverage_mean: 5
   mismatch_coverage_sd: 1
+
+simulate_reads:
+  illumina_read_length: 250
+
+mask_assemblies:
+  apply_mask: True

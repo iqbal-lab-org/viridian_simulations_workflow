@@ -122,11 +122,13 @@ rule simulate_reads:
         directory('read_output')
     params:
         processes=config['processes'],
-        prop_illumina=config['proportion_illumina']
+        prop_illumina=config['proportion_illumina'],
+        read_length=config["simulate_reads"]["illumina_read_length"]
     run:
         def simulate_ART_reads(genome,
                                output,
-                               sample_coverages):
+                               sample_coverages,
+                               read_length):
             """Function to run ART on amplicon sequences per simulated genomic sequence"""
             sample_name = os.path.basename(genome[:-1])
             output_dir = os.path.join(output, sample_name)
@@ -139,7 +141,7 @@ rule simulate_reads:
                 # subprocess_command = 'art_bin_MountRainier/art_illumina --quiet -sam -i ' + amplicon_file + \
                     #    ' --paired -l 250 -f ' + str(coverage) + ' -m 2500 -s 50 -o ' + read_file
                 subprocess_command = 'art_bin_MountRainier/art_illumina --quiet -amp -p -sam -na -i ' + amplicon_file + \
-                        ' -l 250 -f ' + str(coverage) + ' -o ' + read_file
+                        ' -l ' + read_length + ' -f ' + str(coverage) + ' -o ' + read_file
                 subprocess.run(subprocess_command, shell=True, check=True)
 
         def simulate_badreads(genome,
@@ -183,7 +185,8 @@ rule simulate_reads:
         for illumina_subset in tqdm(illumina_list):
             Parallel(n_jobs=params.processes, prefer="threads")(delayed(simulate_ART_reads)(genome,
                                                                                             art_output,
-                                                                                            sample_coverages) for genome in illumina_subset)
+                                                                                            sample_coverages,
+                                                                                            params.read_length) for genome in illumina_subset)
         # parallelise Badread
         nanopore_list = [
             nanopore_samples[i:i + params.processes] for i in range(0, len(nanopore_samples), params.processes)
@@ -299,40 +302,47 @@ rule mask_assemblies:
         amplicon_sequences=rules.split_amplicons.output
     output:
         directory("masked_truth_assemblies")
+    params:
+        mask_assemblies=config['mask_assemblies']["apply_mask"]
     run:
         # make directory
         if not os.path.exists(output[0]):
             os.mkdir(output[0])
-        # import the amplicon statistics file to see which amplicons to mask
-        with open(os.path.join(input[1], "amplicon_statistics.json"), "r") as statIn:
-            amplicon_stats = json.loads(statIn.read())
-        # iterate through samples and check if amplicons have low coverage, if so then mask their sequence
-        for sample in amplicon_stats:
-            sample_stats = amplicon_stats[sample]
-            all_amplicons = list(sample_stats.keys())
-            # import the simulated squence
-            filename = str(sample)+".fasta"
-            sample_name, sample_sequence = clean_genome(os.path.join(input[0], filename))
-            sample_sequence = list(sample_sequence)
-            # look through the amplicon statistics to see if an amplicon needs to be masked
-            for amplicon in range(len(all_amplicons)-1):
-                if "primer_SNP" in sample_stats[all_amplicons[amplicon]]["errors"] \
-                    or "random_dropout" in sample_stats[all_amplicons[amplicon]]["errors"]:
-                    # we are masking regions with low coverage that are not covered by the adjacent amplicons
-                    if not (amplicon == 0 and amplicon == len(all_amplicons) - 1):
-                        mask_start = sample_stats[all_amplicons[amplicon-1]]["amplicon_end"]
-                        mask_end = sample_stats[all_amplicons[amplicon+1]]["amplicon_start"]
-                    elif amplicon == 0:
-                        mask_start = sample_stats[all_amplicons[amplicon]]["amplicon_start"]
-                        mask_end = sample_stats[all_amplicons[amplicon+1]]["amplicon_start"]
-                    else:
-                        mask_start = sample_stats[all_amplicons[amplicon-1]]["amplicon_end"]
-                        mask_end = sample_stats[all_amplicons[amplicon]]["amplicon_end"]
-                    # replace the masked sequence with Ns
-                    sample_sequence[mask_start:mask_end] = list("N"*(mask_end-mask_start))
-            # write out the masked simulated sequence
-            with open(os.path.join(output[0], filename), "w") as outGen:
-                outGen.write("\n".join([">" + sample_name, "".join(sample_sequence)]))
+        # if mask sequences off then just copy the unmasked sequences
+        if not params.mask_assemblies:
+            shell("cp -a /" + input[0] + "/. /" + output[0] + "/")
+        else:
+            # import the amplicon statistics file to see which amplicons to mask
+            with open(os.path.join(input[1], "amplicon_statistics.json"), "r") as statIn:
+                amplicon_stats = json.loads(statIn.read())
+            # iterate through samples and check if amplicons have low coverage, if so then mask their sequence
+            for sample in amplicon_stats:
+                sample_stats = amplicon_stats[sample]
+                all_amplicons = list(sample_stats.keys())
+                # import the simulated squence
+                filename = str(sample)+".fasta"
+                sample_name, sample_sequence = clean_genome(os.path.join(input[0], filename))
+                sample_sequence = list(sample_sequence)
+                # look through the amplicon statistics to see if an amplicon needs to be masked
+                for amplicon in range(len(all_amplicons)-1):
+                    if "primer_SNP" in sample_stats[all_amplicons[amplicon]]["errors"] \
+                        or "random_dropout" in sample_stats[all_amplicons[amplicon]]["errors"] \
+                        or "primer_dimer" in sample_stats[all_amplicons[amplicon]]["errors"]:
+                        # we are masking regions with low coverage that are not covered by the adjacent amplicons
+                        if not (amplicon == 0 and amplicon == len(all_amplicons) - 1):
+                            mask_start = sample_stats[all_amplicons[amplicon-1]]["amplicon_end"]
+                            mask_end = sample_stats[all_amplicons[amplicon+1]]["amplicon_start"]
+                        elif amplicon == 0:
+                            mask_start = sample_stats[all_amplicons[amplicon]]["amplicon_start"]
+                            mask_end = sample_stats[all_amplicons[amplicon+1]]["amplicon_start"]
+                        else:
+                            mask_start = sample_stats[all_amplicons[amplicon-1]]["amplicon_end"]
+                            mask_end = sample_stats[all_amplicons[amplicon]]["amplicon_end"]
+                        # replace the masked sequence with Ns
+                        sample_sequence[mask_start:mask_end] = list("N"*(mask_end-mask_start))
+                # write out the masked simulated sequence
+                with open(os.path.join(output[0], filename), "w") as outGen:
+                    outGen.write("\n".join([">" + sample_name, "".join(sample_sequence)]))
 
 rule assess_assemblies:
     input:
