@@ -103,7 +103,12 @@ def align_primers(genomic_sequence,
         # extract start and end position of aligned primer
         aligned_starts.append(int(bed_content[1]))
         aligned_ends.append(int(bed_content[2]))
-        shutil.rmtree(temp_dir)
+        # remove the temporary directory
+        try:
+            shutil.rmtree(temp_dir)
+        except FileNotFoundError:
+            pass
+    # store the mapped stop and start positions
     primer_df['start'] = aligned_starts
     primer_df['end'] = aligned_ends
     return primer_df, alignment_stats
@@ -180,6 +185,7 @@ def extract_amplicons(primer_df,
                       match_coverage_sd,
                       mismatch_coverage_mean,
                       mismatch_coverage_sd,
+                      dimer_prob,
                       output_dir):
     """Identify best matching primer pairs and extract the amplicon sequence"""
     # we need to map primers to the simulated genomes so INDELs are properly considered
@@ -229,6 +235,20 @@ def extract_amplicons(primer_df,
             while coverage < 0:
                 coverage = int(round(np.random.normal(loc=float(match_coverage_mean),
                                                 scale=float(match_coverage_sd))))
+            # check for the possibility of primer dimers and decide if dimer will form with fixed probability
+            dimer = False
+            if left_primers['seq'][position][-3:] == right_primers['seq'][position][:3] \
+                    and np.random.binomial(n=1, p=(dimer_prob)) == 1:
+                amplicon = left_primers['seq'][position][-3:] + right_primers['seq'][position]
+                dimer = True
+            # overlaps may occur at either side of each primer
+            if left_primers['seq'][position][:3] == right_primers['seq'][position][-3:] \
+                    and np.random.binomial(n=1, p=(dimer_prob)) == 1:
+                amplicon = right_primers['seq'][position][-3:] + left_primers['seq'][position]
+                dimer = True
+            if dimer:
+                amplicon_stats[primer_id]['has_error'] = 1
+                amplicon_stats[primer_id]["errors"].append("primer_dimer")
         else:
             # apply reduced coverage due to SNP or reference primer reversion with 50% probability
             reference_reversion = np.random.binomial(n=1, p=(0.5))
@@ -264,9 +284,9 @@ def extract_amplicons(primer_df,
 
 def main():
     # import correct primers for primer scheme
-    primer_df = find_primer_scheme("V4.1")
+    primer_df = find_primer_scheme("V3")
     sequence_files = ['1.fasta']
-    output_dir = 'amplicon_sequences'
+    output_dir = 'amplicon_sequences_test'
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
     sys.stderr.write('\nAligning primers and splitting simulated sequences into amplicons\n')
@@ -281,6 +301,7 @@ def main():
                                              20,
                                              5,
                                              1,
+                                             0.1,
                                              output_dir)
         for sample in amplicon_results:
             sample_coverages[sample] = amplicon_results[sample][0]

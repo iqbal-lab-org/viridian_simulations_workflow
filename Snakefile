@@ -69,6 +69,7 @@ rule split_amplicons:
     params:
         primer_scheme=config['primer_scheme'],
         random_dropout_probability=config['split_amplicons']['random_dropout_probability'],
+        primer_dimer_probability=config['split_amplicons']['primer_dimer_probability'],
         match_coverage_mean=config['split_amplicons']['match_coverage_mean'],
         match_coverage_sd=config['split_amplicons']['match_coverage_sd'],
         mismatch_coverage_mean=config['split_amplicons']['mismatch_coverage_mean'],
@@ -98,6 +99,7 @@ rule split_amplicons:
                                                                                                               params.match_coverage_sd,
                                                                                                               params.mismatch_coverage_mean,
                                                                                                               params.mismatch_coverage_sd,
+                                                                                                              params.random_dropout_probability,
                                                                                                               output_dir) for genomic_sequence in subset)
             for elem in amplicon_results:
                  for sample in elem:

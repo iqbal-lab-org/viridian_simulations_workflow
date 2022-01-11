@@ -18,6 +18,7 @@ phastSim:
 
 split_amplicons:
   random_dropout_probability: 0.001
+  primer_dimer_probability: 0.5
   match_coverage_mean: 500
   match_coverage_sd: 20
   mismatch_coverage_mean: 5
