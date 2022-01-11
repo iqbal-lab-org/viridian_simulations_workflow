@@ -296,7 +296,7 @@ rule mask_assemblies:
         simulated_genomes=rules.split_sequences.output,
         amplicon_sequences=rules.split_amplicons.output
     output:
-        directory("masked_assemblies")
+        directory("masked_truth_assemblies")
     run:
         # make directory
         if not os.path.exists(output[0]):
@@ -338,7 +338,7 @@ rule assess_assemblies:
         simulated_genomes=rules.mask_assemblies.output,
         reference_genome=config["reference_genome"]
     output:
-        directory('viridian_performance')
+        directory('varifier_statistics')
     run:
         directories = [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]
         if not os.path.exists(output[0]):
@@ -346,12 +346,17 @@ rule assess_assemblies:
                 os.mkdir(folder)
         art_assemblies = glob.glob(input[0] + '/ART_assemblies/*')
         badread_assemblies = glob.glob(input[0] + '/Badread_assemblies/*')
+        # store precision and recalls to generate a plot
+        precisions = []
+        recalls = []
+        # iterate through assemblies and run varifier
         for assem in art_assemblies + badread_assemblies:
             vcf_file = os.path.join(assem, "variants.vcf")
             truth_genome = os.path.join(input[1], os.path.basename(assem) + ".fasta")
             output_dir = os.path.join(output[0], os.path.join(assem.split("/")[-2], os.path.basename(assem)))
             varifier_command = "singularity run varifier/varifier.img vcf_eval " + truth_genome + " " + input[2] + " " + vcf_file + " " + output_dir
             shell(varifier_command)
+        # generate a precion recall curve for all of the assemblies
 
 rule clean_outputs:
     input:
