@@ -1,0 +1,87 @@
+BootStrap: debootstrap
+OSVersion: focal
+MirrorURL: http://us.archive.ubuntu.com/ubuntu/
+
+%environment
+export PATH=/bioinf-tools/:$PATH
+export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+export LANG=C.UTF-8
+
+
+%setup
+    mkdir $SINGULARITY_ROOTFS/viridian_simulations_workflow
+    rsync -a requirements.txt error_modes.py config.yml LICENSE README.md V3 V4 V4.1 reference_genome.fasta Snakefile $SINGULARITY_ROOTFS/viridian_simulations_workflow/
+
+
+%post
+    #_____________________ setup $PATH _______________________#
+    export PATH=/bioinf-tools/:$PATH
+    export LANG=C.UTF-8
+
+    cd /viridian_simulations_workflow
+    # apt-get install python and git
+    apt-get update
+    apt-get install -y \
+        cmake \
+        gcc \
+        git \
+        python3
+    apt-get update
+    apt-get install -y \
+        python3-pip \
+        python3-setuptools \
+        wget \
+        build-essential \
+        libssl-dev \
+        uuid-dev \
+        libgpgme11-dev \
+        squashfs-tools \
+        libseccomp-dev \
+        pkg-config \
+        cryptsetup
+    # pip install required packages
+    pip3 install -r requirements.txt
+    # install VGsim
+    git clone https://github.com/Genomics-HSE/VGsim.git
+    cd VGsim
+    make
+    cd ..
+    # install ART
+    wget https://www.niehs.nih.gov/research/resources/assets/docs/artbinmountrainier2016.06.05linux64.tgz && \
+        tar -xzf artbinmountrainier2016.06.05linux64.tgz
+    # install bwa
+    git clone https://github.com/lh3/bwa.git
+    cd bwa
+    make
+    cd ..
+    # install minimap2
+    git clone https://github.com/lh3/minimap2.git
+    cd minimap2
+    make
+    cd ..
+    cp -s minimap2_git/minimap2 .
+    # install racon
+    git clone --recursive https://github.com/lbcb-sci/racon.git
+    cd racon
+    mkdir build
+    cd build
+    cmake -DCMAKE_BUILD_TYPE=Release ..
+    make
+    cd ../../
+    # install Go
+    wget https://dl.google.com/go/go1.17.1.linux-amd64.tar.gz && \ # Downloads the required Go package
+    sudo tar -C /usr/local -xzvf go1.17.1.linux-amd64.tar.gz && \ # Extracts the archive
+    rm go1.17.1.linux-amd64.tar.gz    # Deletes the ``tar`` file
+    echo 'export PATH=/usr/local/go/bin:$PATH' >> ~/.bashrc && \
+    source ~/.bashrc
+    # install singularity
+    wget https://github.com/sylabs/singularity/releases/download/v3.8.2/singularity-3.8.2.tar.gz && \
+    tar -xzf singularity-3.8.2.tar.gz && \
+    cd singularity
+    ./mconfig && \
+    make -C builddir && \
+    sudo make -C builddir install
+    cd ..
+
+%runscript
+    "$@"

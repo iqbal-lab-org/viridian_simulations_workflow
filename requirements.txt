@@ -1,0 +1,14 @@
+glob
+gzip
+json
+numpy
+pandas
+phastSim
+pickle
+pysam
+random
+re
+shutil
+snakemake
+tempfile
+tqdm

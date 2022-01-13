@@ -1,10 +1,7 @@
-from collections import Counter
 import glob
 import gzip
 from joblib import Parallel, delayed
 import json
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 import os
 import pandas as pd
 import pickle
