@@ -27,7 +27,7 @@ rule VGsim_tree:
         iterations=config['VGsim']['iterations'],
         sample_size=config['VGsim']['sample_size']
     shell:
-        'python VGsim/vgsim.py {input.rate_file} -it {params.iterations} -pm {input.pp_population_model_file} \
+        'python3 VGsim/vgsim.py {input.rate_file} -it {params.iterations} -pm {input.pp_population_model_file} \
                 {input.mg_population_model_file} -seed {params.seed} -nwk --sampleSize {params.sample_size}'
 
 rule phastSim_evolution:
@@ -249,7 +249,7 @@ rule run_viridian:
             fw_read = sample
             rv_read = sample.replace('_1', '_2')
             output_dir = os.path.join(output, os.path.basename(sample).replace('_1.fq', ''))
-            viridian_command = "singularity run viridian_workflow/viridian_workflow.img run_one_sample \
+            viridian_command = "viridian_workflowas run_one_sample \
                     --tech illumina \
                     --ref_fasta " + reference_genome + " \
                     --reads1 " + fw_read +" \
@@ -262,7 +262,7 @@ rule run_viridian:
                                        output):
             """Function to run viridian on Badread read sets"""
             output_dir = os.path.join(output, os.path.basename(sample).replace('.fq', ''))
-            viridian_command = "singularity run viridian_workflow/viridian_workflow.img run_one_sample \
+            viridian_command = "viridian_workflow run_one_sample \
                     --tech ont \
                     --ref_fasta " + reference_genome + " \
                     --reads " + sample + " \
