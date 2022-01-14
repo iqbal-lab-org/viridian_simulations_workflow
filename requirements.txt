@@ -1,3 +1,4 @@
+Cython
 joblib
 numpy
 pandas

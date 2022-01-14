@@ -17,7 +17,7 @@ cd ..
 
 # Usage
 
-```singularity viridian_simulations_workflow.img snakemake --cores 1 assess_assemblies```
+```singularity run viridian_simulations_workflow.img snakemake --cores 1 assess_assemblies```
 
 # Configuration
 

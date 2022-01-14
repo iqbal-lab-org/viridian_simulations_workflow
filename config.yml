@@ -1,4 +1,4 @@
-processes: 7
+processes: 1
 reference_genome: reference_genome.fasta
 proportion_illumina: 0.99
 primer_scheme: V3

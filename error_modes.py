@@ -70,11 +70,11 @@ def align_primers(genomic_sequence,
         bam_file = os.path.join(temp_dir, row['name'] + '.bam')
         bed_file = os.path.join(temp_dir, row['name'] + '.bed')
         # aln primer to genomic sequence using bwa, then convert to sam, bam and bed files
-        map_command = 'bwa index ' + genomic_sequence + ' && bwa aln -n 0.1 ' + genomic_sequence + ' ' + primer_fasta
-        map_command += ' > ' + os.path.join(temp_dir, row['name'] + '.sai') + '; bwa samse ' + genomic_sequence
+        map_command = 'bwa/bwa index ' + genomic_sequence + ' && bwa/bwa aln -n 0.1 ' + genomic_sequence + ' ' + primer_fasta
+        map_command += ' > ' + os.path.join(temp_dir, row['name'] + '.sai') + '; bwa/bwa samse ' + genomic_sequence
         map_command += ' ' + os.path.join(temp_dir, row['name'] + '.sai') +  ' ' + primer_fasta
-        map_command += ' > ' + alignment_file + ' && samtools view -Sb ' + alignment_file + ' > ' + bam_file
-        map_command += ' && bamToBed -i ' + bam_file + ' > ' + bed_file
+        map_command += ' > ' + alignment_file + ' && samtools/samtools view -Sb ' + alignment_file + ' > ' + bam_file
+        map_command += ' && bedtools2/bin/bamToBed -i ' + bam_file + ' > ' + bed_file
         subprocess.run(map_command, shell=True, check=True)
         # open the bed and sam files
         with open(bed_file, 'r') as bedIn:

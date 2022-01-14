@@ -1,21 +1,12 @@
 Bootstrap: library
 From: ubuntu:20.04
 
-%environment
-export PATH=/bioinf-tools/:$PATH
-export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
-export LANG=C.UTF-8
-
-
 %setup
     mkdir $SINGULARITY_ROOTFS/viridian_simulations_workflow
-    rsync -a requirements.txt error_modes.py config.yml LICENSE README.md V3 V4 V4.1 reference_genome.fasta Snakefile $SINGULARITY_ROOTFS/viridian_simulations_workflow/
+    rsync -a requirements.txt error_modes.py LICENSE README.md V3 V4 V4.1 Snakefile $SINGULARITY_ROOTFS/viridian_simulations_workflow/
 
 
 %post
-    #_____________________ setup $PATH _______________________#
-    export PATH=/bioinf-tools/:$PATH
-    export LANG=C.UTF-8
     export DEBIAN_FRONTEND=noninteractive
 
     cd /viridian_simulations_workflow
@@ -43,7 +34,10 @@ export LANG=C.UTF-8
         squashfs-tools \
         libseccomp-dev \
         pkg-config \
-        cryptsetup
+        cryptsetup \
+        libncurses5-dev \
+        libcurl4-openssl-dev
+
     # use gcc and g++-10
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 --slave /usr/bin/g++ g++ /usr/bin/g++-10 --slave /usr/bin/gcov gcov /usr/bin/gcov-10
     # pip install required packages
@@ -51,33 +45,60 @@ export LANG=C.UTF-8
     # install VGsim
     git clone https://github.com/Genomics-HSE/VGsim.git
     cd VGsim
-    python3 -m pip install .
+    git checkout 018d02f7f41ee844db61a27a3f643903dd4cff12
+    python3 -m pip install git+https://github.com/ev-br/mc_lib.git@v0.4
+    python3 -m pip install -e .
     cd ..
     # install ART
     wget https://www.niehs.nih.gov/research/resources/assets/docs/artbinmountrainier2016.06.05linux64.tgz && \
         tar -xzf artbinmountrainier2016.06.05linux64.tgz
+    # install minimap2
+    git clone https://github.com/lh3/minimap2.git
+    cd minimap2
+    make CC=gcc-10 CPP=g++-10 CXX=g++-10 LD=g++-10
+    cd ..
     # install bwa
     git clone https://github.com/lh3/bwa.git
     cd bwa
     make
     cd ..
-    # install minimap2
-    git clone https://github.com/lh3/minimap2.git
-    cd minimap2
+    # install htslib and samtools
+    wget https://github.com/samtools/htslib/releases/download/1.14/htslib-1.14.tar.bz2
+    tar -vxjf htslib-1.14.tar.bz2
+    cd htslib-1.14
     make
     cd ..
+    wget https://github.com/samtools/samtools/releases/download/1.14/samtools-1.14.tar.bz2
+    tar -vxjf samtools-1.14.tar.bz2
+    mv samtools-1.14 samtools && cd samtools
+    ./configure
+    make
+    cd ..
+    # install bedtools
+    git clone https://github.com/arq5x/bedtools2
+    cd bedtools2
+    make
+    make install
+    cd ..
     # install racon
-    git clone --recursive https://github.com/lbcb-sci/racon.git racon-git
-    cd racon-git
+    git clone --recursive https://github.com/lbcb-sci/racon.git
+    cd racon
     mkdir build
     cd build
     cmake -DCMAKE_BUILD_TYPE=Release ..
     make CC=gcc-10 CPP=g++-10 CXX=g++-10 LD=g++-10
     cd ../../
-    cp -s racon-git/build/bin/racon .
     # install viridian workflow
-    git clone https://github.com/iqbal-lab-org/viridian_workflow.git
+    # git clone https://github.com/iqbal-lab-org/viridian_workflow.git
+    git clone https://github.com/jeff-k/viridian_workflow.git
     cd viridian_workflow
+    git checkout self_qc
+    python3 -m pip install .
+    cd ..
+    # install varifier
+    git clone https://github.com/iqbal-lab-org/varifier.git
+    cd varifier
+    git checkout 9ad87db9d501e17c008716f53c386500d4ba8f63
     python3 -m pip install .
     cd ..
 
