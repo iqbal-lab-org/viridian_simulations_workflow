@@ -152,6 +152,13 @@ seq-align
 bwa
 minimap2
 varifier
+samtools
+samtools-1.14.tar.bz2
+htslib-1.14
+htslib-1.14.tar.bz2
+Badread
+bedtools2
+artbinmountrainier2016.06.05linux64.tgz
 
 # outputs
 phastSim_output
@@ -163,5 +170,5 @@ updated_sequences
 read_output
 concatenated_reads
 viridian_output
-masked_assemblies
+masked_truth_assemblies
 viridian_performance

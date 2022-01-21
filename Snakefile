@@ -22,12 +22,14 @@ rule VGsim_tree:
         mg_population_model_file=config['VGsim']['mg_population_model_file']
     output:
         'newick_output.nwk'
+    singularity:
+        'viridian_simulations_workflow.img'
     params:
-        seed=config['VGsim']['seed'],
+        seed=config['seed'],
         iterations=config['VGsim']['iterations'],
         sample_size=config['VGsim']['sample_size']
     shell:
-        'python3 VGsim/vgsim.py {input.rate_file} -it {params.iterations} -pm {input.pp_population_model_file} \
+        'singularity run singularity/images/VGsim.img {input.rate_file} -it {params.iterations} -pm {input.pp_population_model_file} \
                 {input.mg_population_model_file} -seed {params.seed} -nwk --sampleSize {params.sample_size}'
 
 rule phastSim_evolution:
@@ -37,9 +39,9 @@ rule phastSim_evolution:
     output:
         directory(config['phastSim']['output_dir'])
     params:
-        seed=config['phastSim']['seed']
+        seed=config['seed']
     shell:
-        'mkdir {output} && phastSim --outpath {output}/ --seed {params.seed} --createFasta \
+        'mkdir {output} && singularity run singularity/images/phastSim.img --outpath {output}/ --seed {params.seed} --createFasta \
                 --createInfo --createNewick --createPhylip --treeFile {input.tree_file} \
                 --invariable 0.1 --alpha 0.0002 --omegaAlpha 0.0002 --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 --codon \
                 --reference {input.reference_genome}'
@@ -65,6 +67,7 @@ rule split_amplicons:
         directory('amplicon_sequences')
     params:
         primer_scheme=config['primer_scheme'],
+        seed=config["seed"],
         random_dropout_probability=config['split_amplicons']['random_dropout_probability'],
         primer_dimer_probability=config['split_amplicons']['primer_dimer_probability'],
         match_coverage_mean=config['split_amplicons']['match_coverage_mean'],
@@ -73,8 +76,8 @@ rule split_amplicons:
         mismatch_coverage_sd=config['split_amplicons']['mismatch_coverage_sd'],
         processes=config['processes']
     run:
-         # import correct primers for primer scheme
-        primer_df = find_primer_scheme("V4.1")
+        # import correct primers for primer scheme
+        primer_df, pool1_primers, pool2_primers = find_primer_scheme(params.primer_scheme)
         # create output directory
         output_dir = output[0]
         if not os.path.exists(output_dir):
@@ -96,7 +99,10 @@ rule split_amplicons:
                                                                                                               params.match_coverage_sd,
                                                                                                               params.mismatch_coverage_mean,
                                                                                                               params.mismatch_coverage_sd,
-                                                                                                              params.random_dropout_probability,
+                                                                                                              params.primer_dimer_probability,
+                                                                                                              pool1_primers,
+                                                                                                              pool2_primers,
+                                                                                                              params.seed,
                                                                                                               output_dir) for genomic_sequence in subset)
             for elem in amplicon_results:
                  for sample in elem:
@@ -108,9 +114,11 @@ rule split_amplicons:
             # Pickle using the highest protocol available.
             pickle.dump(sample_coverages, ampOut, pickle.HIGHEST_PROTOCOL)
         # save amplicon error statistics
-        sys.stderr.write("\Pickling the error statistics\n")
+        sys.stderr.write("\nPickling the error statistics\n")
         with open(os.path.join(output_dir, 'amplicon_statistics.pickle'), 'wb') as statOut:
             pickle.dump(error_stats, statOut, pickle.HIGHEST_PROTOCOL)
+        with open(os.path.join(output_dir, 'amplicon_statistics.json'), 'w') as jsonOut:
+            jsonOut.write(json.dumps(error_stats))
 
 rule simulate_reads:
     input:
@@ -119,8 +127,10 @@ rule simulate_reads:
         directory('read_output')
     params:
         processes=config['processes'],
+        divide_genomes=config["divide_genomes"],
         prop_illumina=config['proportion_illumina'],
-        read_length=config["simulate_reads"]["illumina_read_length"]
+        read_length=config["simulate_reads"]["illumina_read_length"],
+        seed=config["seed"]
     run:
         def simulate_ART_reads(genome,
                                output,
@@ -135,9 +145,7 @@ rule simulate_reads:
                 coverage = sample_coverages[sample_name][amplicon]
                 amplicon_file = os.path.join(genome, amplicon + '.fasta')
                 read_file = os.path.join(output_dir, amplicon)
-                # subprocess_command = 'art_bin_MountRainier/art_illumina --quiet -sam -i ' + amplicon_file + \
-                    #    ' --paired -l 250 -f ' + str(coverage) + ' -m 2500 -s 50 -o ' + read_file
-                subprocess_command = 'art_bin_MountRainier/art_illumina --quiet -amp -p -sam -na -i ' + amplicon_file + \
+                subprocess_command = 'singularity run singularity/images/ART.img --quiet -amp -p -sam -na -i ' + amplicon_file + \
                         ' -l ' + read_length + ' -f ' + str(coverage) + ' -o ' + read_file
                 subprocess.run(subprocess_command, shell=True, check=True)
 
@@ -152,7 +160,7 @@ rule simulate_reads:
                 coverage = sample_coverages[sample_name][amplicon]
                 amplicon_file = os.path.join(genome, amplicon + '.fasta')
                 read_file = os.path.join(output_dir, amplicon) + '.fastq.gz'
-                subprocess_command = 'badread simulate --reference ' + amplicon_file + ' --quantity ' + str(coverage) + 'x \
+                subprocess_command = 'singularity run singularity/images/Badread.img simulate --reference ' + amplicon_file + ' --quantity ' + str(coverage) + 'x \
                 |         gzip > ' + read_file
                 subprocess.run(subprocess_command, shell=True, check=True)
             return
@@ -160,21 +168,24 @@ rule simulate_reads:
         # make output dirs
         art_output = os.path.join(output[0], 'ART_output')
         badread_output = os.path.join(output[0], 'Badread_output')
-        if not os.path.exists(output[0]):
-            os.mkdir(output[0])
-        if not os.path.exists(art_output):
-            os.mkdir(art_output)
-        if not os.path.exists(badread_output):
-            os.mkdir(badread_output)
+        directories = [output[0], art_output, badread_output]
+        for subdir in directories:
+            if not os.path.exists(subdir):
+                os.mkdir(subdir)
         # list samples and import coverages
         samples = glob.glob(input[0] + '/*/')
         with open(os.path.join(input[0], 'amplicon_coverages.pickle'), 'rb') as coverageHandle:
             sample_coverages = pickle.load(coverageHandle)
         # if specified, assign samples as illumina or nanopore reads
-        random.shuffle(samples)
-        num_illumina = round(len(samples)*float(params.prop_illumina))
-        illumina_samples = samples[:num_illumina]
-        nanopore_samples = samples[num_illumina:]
+        if params.divide_genomes:
+            random.seed(params.seed)
+            random.shuffle(samples)
+            num_illumina = round(len(samples)*float(params.prop_illumina))
+            illumina_samples = samples[:num_illumina]
+            nanopore_samples = samples[num_illumina:]
+        else:
+            illumina_samples = samples
+            nanopore_samples = samples
         # parallelise ART
         illumina_list = [
             illumina_samples[i:i + params.processes] for i in range(0, len(illumina_samples), params.processes)
@@ -183,7 +194,7 @@ rule simulate_reads:
             Parallel(n_jobs=params.processes, prefer="threads")(delayed(simulate_ART_reads)(genome,
                                                                                             art_output,
                                                                                             sample_coverages,
-                                                                                            params.read_length) for genome in illumina_subset)
+                                                                                            str(params.read_length)) for genome in illumina_subset)
         # parallelise Badread
         nanopore_list = [
             nanopore_samples[i:i + params.processes] for i in range(0, len(nanopore_samples), params.processes)
@@ -238,7 +249,7 @@ rule run_viridian:
         simulated_genomes=rules.cat_reads.output,
         reference_genome=config["reference_genome"]
     output:
-        directory('viridian_output')
+        directory('viridian_assemblies')
     params:
         processes=config['processes']
     run:
@@ -249,7 +260,7 @@ rule run_viridian:
             fw_read = sample
             rv_read = sample.replace('_1', '_2')
             output_dir = os.path.join(output, os.path.basename(sample).replace('_1.fq', ''))
-            viridian_command = "viridian_workflowas run_one_sample \
+            viridian_command = "singularity run viridian_workflow/viridian_workflow.img run_one_sample \
                     --tech illumina \
                     --ref_fasta " + reference_genome + " \
                     --reads1 " + fw_read +" \
@@ -262,7 +273,7 @@ rule run_viridian:
                                        output):
             """Function to run viridian on Badread read sets"""
             output_dir = os.path.join(output, os.path.basename(sample).replace('.fq', ''))
-            viridian_command = "viridian_workflow run_one_sample \
+            viridian_command = "singularity run viridian_workflow/viridian_workflow.img run_one_sample \
                     --tech ont \
                     --ref_fasta " + reference_genome + " \
                     --reads " + sample + " \
@@ -310,8 +321,8 @@ rule mask_assemblies:
             shell("cp -a /" + input[0] + "/. /" + output[0] + "/")
         else:
             # import the amplicon statistics file to see which amplicons to mask
-            with open(os.path.join(input[1], "amplicon_statistics.json"), "r") as statIn:
-                amplicon_stats = json.loads(statIn.read())
+            with open(os.path.join(input[1], 'amplicon_statistics.pickle'), 'rb') as statIn:
+                amplicon_stats = pickle.load(statIn)
             # iterate through samples and check if amplicons have low coverage, if so then mask their sequence
             for sample in amplicon_stats:
                 sample_stats = amplicon_stats[sample]
@@ -366,6 +377,7 @@ rule assess_assemblies:
             varifier_command = "singularity run varifier/varifier.img vcf_eval " + truth_genome + " " + input[2] + " " + vcf_file + " " + output_dir
             shell(varifier_command)
         # generate a precion recall curve for all of the assemblies
+        # can make a truth vcf adn use this as input
 
 rule clean_outputs:
     input:

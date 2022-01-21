@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 import os
 import pandas as pd
@@ -17,21 +18,38 @@ def find_primer_scheme(scheme):
         primer_sequences = "V3/nCoV-2019.tsv"
         # import tsv file as pandas dataframe
         primer_df = pd.read_csv(primer_sequences, sep='\t')
-        return primer_df
+        # split primer sequences by their pool
+        pool1_primers = []
+        pool2_primers = []
+        for row in range(len(primer_df["pool"])):
+            if "_1" in primer_df["pool"][row]:
+                pool1_primers.append(primer_df["seq"][row])
+            if "_2" in primer_df["pool"][row]:
+                pool2_primers.append(primer_df["seq"][row])
+        return primer_df, pool1_primers, pool2_primers
     if "V4" in scheme:
         # path of V4 artic primer metadata
         primer_sequences = os.path.join(scheme, "SARS-CoV-2.primer.bed")
         # import bed file as string
         with open(primer_sequences, "r") as inV4:
             primers = inV4.read().splitlines()
+        # keep track of which primers are in pool1 or pool2
+        pool1_primers = []
+        pool2_primers = []
         # extract primer names and sequences and convert to df
-        primer_dict = {"name": [], "seq": []}
+        primer_dict = {"name": [], "seq": [], "pool": []}
         for row in primers:
             split = row.split("\t")
             primer_dict["name"].append(split[3])
             primer_dict["seq"].append(split[6])
+            if split[4] == "1":
+                pool1_primers.append(primer_dict["seq"])
+                primer_dict["pool"].append("nCoV-2019_1")
+            if split[4] == "2":
+                pool2_primers.append(primer_dict["seq"])
+                primer_dict["pool"].append("nCoV-2019_2")
         if scheme == "V4":
-            return pd.DataFrame(primer_dict)
+            return pd.DataFrame(primer_dict), pool1_primers, pool2_primers
         elif scheme == "V4.1":
             with open(os.path.join(scheme, "SARS-CoV-2.primer_pairs.tsv")) as inTSV:
                 pairs = inTSV.read().splitlines()
@@ -44,17 +62,50 @@ def find_primer_scheme(scheme):
                     name = name.split("_alt")[0]
                     ordered_primer_names += [name, name + "_alt1"]
             # iterate through the correctly ordered names and get the sequence
+            primer_pools = []
             for prospective_name in ordered_primer_names:
                 if prospective_name in primer_dict["name"]:
+                    primer_pools.append(primer_dict["pool"][primer_dict["name"].index(prospective_name)])
                     primer_data.append((prospective_name, primer_dict["seq"][primer_dict["name"].index(prospective_name)]))
-            return pd.DataFrame(primer_data, columns=['name','seq'])
+            primer_df = pd.DataFrame(primer_data, columns=['name','seq'])
+            primer_df["pool"] = primer_pools
+            return primer_df, pool1_primers, pool2_primers
         else:
             ValueError('Only "V3", "V4" and "V4.1" primer schemes are supported')
     else:
         raise ValueError('Only "V3", "V4" and "V4.1" primer schemes are supported')
 
+def correct_alignment(sample_sequence,
+                      bed_content,
+                      primer_seq,
+                      primer_reversed):
+    """Correct cases where bwa has soft clipped the primer alignment. \
+        For now we are assuming there are no INDELs in the primer binding sites"""
+    primer_start = int(bed_content[1])
+    # get full primer binding sequence
+    target_seq = sample_sequence[primer_start: primer_start + len(primer_seq)]
+    # compare the primer and binding site to
+    mismatches = 0
+    mismatch_str = ""
+    position_count = 0
+    from_end = len(primer_seq)
+    for base in range(len(primer_seq)):
+        if not primer_seq[base] == target_seq[base]:
+            mismatches += 1
+            mismatch_str += str(position_count)
+            mismatch_str += target_seq[base]
+            position_count = 0
+            from_end = len(primer_seq) - (base + 1)
+        else:
+            position_count += 1
+    mismatch_str += str(from_end)
+    # return a list of tuples
+    sam_tags = [("NM", mismatches), ("MD", mismatch_str)]
+    return sam_tags
+
 def align_primers(genomic_sequence,
                   primer_df,
+                  sample_sequence,
                   output_dir):
     """Align primers to genome using BWA and return start and end positions"""
     aligned_starts = []
@@ -70,7 +121,7 @@ def align_primers(genomic_sequence,
         bam_file = os.path.join(temp_dir, row['name'] + '.bam')
         bed_file = os.path.join(temp_dir, row['name'] + '.bed')
         # aln primer to genomic sequence using bwa, then convert to sam, bam and bed files
-        map_command = 'bwa/bwa index ' + genomic_sequence + ' && bwa/bwa aln -n 0.1 ' + genomic_sequence + ' ' + primer_fasta
+        map_command = 'bwa/bwa index ' + genomic_sequence + ' && bwa/bwa aln -n 4 ' + genomic_sequence + ' ' + primer_fasta
         map_command += ' > ' + os.path.join(temp_dir, row['name'] + '.sai') + '; bwa/bwa samse ' + genomic_sequence
         map_command += ' ' + os.path.join(temp_dir, row['name'] + '.sai') +  ' ' + primer_fasta
         map_command += ' > ' + alignment_file + ' && samtools/samtools view -Sb ' + alignment_file + ' > ' + bam_file
@@ -83,6 +134,11 @@ def align_primers(genomic_sequence,
         # see if there are mismatches between the primer and the simulated sequence
         for mapped in samfile:
             sam_tags = mapped.tags
+            if not mapped.cigar[0][1] == 0:
+                sam_tags = correct_alignment(sample_sequence,
+                                             bed_content,
+                                             mapped.query_sequence,
+                                             mapped.is_reverse)
             mismatches = [tag[1] for tag in sam_tags if tag[0] == "NM"][0]
             mismatch_dict = {}
             if not mismatches == 0:
@@ -92,7 +148,7 @@ def align_primers(genomic_sequence,
                 absolute_position = 0
                 for pos in range(len(positions)-1):
                     if positions[pos].isnumeric():
-                        current = int(positions[pos])
+                        current = int(positions[pos]) 
                         adjacent_char = positions[pos+1]
                         # need to adjust the .sam positions
                         if not pos == 0:
@@ -186,14 +242,20 @@ def extract_amplicons(primer_df,
                       mismatch_coverage_mean,
                       mismatch_coverage_sd,
                       dimer_prob,
+                      pool1_primers,
+                      pool2_primers,
+                      seed,
                       output_dir):
     """Identify best matching primer pairs and extract the amplicon sequence"""
+    # set the seed
+    np.random.seed(seed)
+    # import the simulated squence
+    sample_name, sample_sequence = clean_genome(sequence_file)
     # we need to map primers to the simulated genomes so INDELs are properly considered
     aligned_primers, alignment_stats = align_primers(sequence_file,
                                                      primer_df,
+                                                     sample_sequence,
                                                      output_dir)
-    # import the simulated squence
-    sample_name, sample_sequence = clean_genome(sequence_file)
     # refine primers to the best hits
     left_primers, right_primers = refine_primers(aligned_primers,
                                                  alignment_stats)
@@ -217,13 +279,13 @@ def extract_amplicons(primer_df,
         # populate the amplicon statistics dictionary
         amplicon_stats[primer_id] = {"amplicon_start": int(left_primers['start'][position]),
                                     "amplicon_end": int(right_primers['end'][position]),
-                                    "has_error": 0,
+                                    "has_error": False,
                                     "errors": [],
                                     "primer_mismatches": total_primer_mismatches,
                                     "mismatch_positions": amplicon_primer_mismatches}
         # determine if this amplicon will randomly drop out
         if np.random.binomial(n=1, p=(random_dropout_probability)) == 1:
-            amplicon_stats[primer_id]['has_error'] = 1
+            amplicon_stats[primer_id]['has_error'] = True
             amplicon_stats[primer_id]["coverage"] = 0
             amplicon_stats[primer_id]["errors"].append("random_dropout")
             amplicon_coverages[primer_id] = 0
@@ -236,18 +298,31 @@ def extract_amplicons(primer_df,
                 coverage = int(round(np.random.normal(loc=float(match_coverage_mean),
                                                 scale=float(match_coverage_sd))))
             # check for the possibility of primer dimers and decide if dimer will form with fixed probability
+            if left_primers['pool'][position] == "nCoV-2019_1":
+                pool_seqs = pool1_primers
+            if left_primers['pool'][position] == "nCoV-2019_2":
+                pool_seqs = pool2_primers
             dimer = False
-            if left_primers['seq'][position][-3:] == right_primers['seq'][position][:3] \
+            # check if primer dimers can occur between either primers and any others in the pool
+            for seq in pool_seqs:
+                if left_primers['seq'][position][-3:] == seq[:3] \
                     and np.random.binomial(n=1, p=(dimer_prob)) == 1:
-                amplicon = left_primers['seq'][position][-3:] + right_primers['seq'][position]
-                dimer = True
-            # overlaps may occur at either side of each primer
-            if left_primers['seq'][position][:3] == right_primers['seq'][position][-3:] \
+                    amplicon = left_primers['seq'][position][-3:] + seq
+                    dimer = True
+                if left_primers['seq'][position][:3] == seq[-3:] \
                     and np.random.binomial(n=1, p=(dimer_prob)) == 1:
-                amplicon = right_primers['seq'][position][-3:] + left_primers['seq'][position]
-                dimer = True
+                    amplicon = seq[-3:] + left_primers['seq'][position]
+                    dimer = True
+                if right_primers['seq'][position][-3:] == seq[:3] \
+                    and np.random.binomial(n=1, p=(dimer_prob)) == 1:
+                    amplicon = right_primers['seq'][position][-3:] + seq
+                    dimer = True
+                if right_primers['seq'][position][:3] == seq[-3:] \
+                    and np.random.binomial(n=1, p=(dimer_prob)) == 1:
+                    amplicon = seq[-3:] + right_primers['seq'][position]
+                    dimer = True
             if dimer:
-                amplicon_stats[primer_id]['has_error'] = 1
+                amplicon_stats[primer_id]['has_error'] = True
                 amplicon_stats[primer_id]["errors"].append("primer_dimer")
         else:
             # apply reduced coverage due to SNP or reference primer reversion with 50% probability
@@ -272,7 +347,7 @@ def extract_amplicons(primer_df,
                     coverage = int(round(np.random.normal(loc=float(match_coverage_mean),
                                                     scale=float(match_coverage_sd))))
                 amplicon_stats[primer_id]["errors"].append("primer_reversion")
-            amplicon_stats[primer_id]['has_error'] = 1
+            amplicon_stats[primer_id]['has_error'] = True
         amplicon_stats[primer_id]["coverage"] = coverage
         amplicon_coverages[primer_id] = coverage
         # save each amplicon as a separate fasta
@@ -284,7 +359,7 @@ def extract_amplicons(primer_df,
 
 def main():
     # import correct primers for primer scheme
-    primer_df = find_primer_scheme("V3")
+    primer_df, pool1_primers, pool2_primers = find_primer_scheme("V4.1")
     sequence_files = ['1.fasta']
     output_dir = 'amplicon_sequences_test'
     if not os.path.exists(output_dir):
@@ -301,7 +376,10 @@ def main():
                                              20,
                                              5,
                                              1,
-                                             0.1,
+                                             1,
+                                             pool1_primers,
+                                             pool2_primers,
+                                             2022,
                                              output_dir)
         for sample in amplicon_results:
             sample_coverages[sample] = amplicon_results[sample][0]
@@ -312,7 +390,7 @@ def main():
         # Pickle using the highest protocol available.
         pickle.dump(sample_coverages, ampOut, pickle.HIGHEST_PROTOCOL)
     # save amplicon error statistics
-    sys.stderr.write("\Pickling the error statistics\n")
+    sys.stderr.write("\nPickling the error statistics\n")
     with open(os.path.join(output_dir, 'amplicon_statistics.pickle'), 'wb') as statOut:
        pickle.dump(error_stats, statOut, pickle.HIGHEST_PROTOCOL)
 

@@ -2,7 +2,6 @@ Cython
 joblib
 numpy
 pandas
-phastSim
 pysam
 snakemake
 toml
