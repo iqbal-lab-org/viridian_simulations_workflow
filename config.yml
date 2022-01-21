@@ -1,15 +1,16 @@
-processes: 7
+processes: 14
 reference_genome: reference_genome.fasta
-proportion_illumina: 0.99
-primer_scheme: V3
+divide_genomes: True
+proportion_illumina: 0.90
+primer_scheme: V4.1
+seed: 2022
 
 VGsim:
   rate_file: VGsim_params/rate_file.rt
-  iterations: 1000000
+  iterations: 10000000
   pp_population_model_file: VGsim_params/pp_population.pp
   mg_population_model_file: VGsim_params/mg_population.mg
-  seed: 2020
-  sample_size: 10
+  sample_size: 1000
 
 phastSim:
   tree_file: newick_output.nwk

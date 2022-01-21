@@ -1,0 +1,8 @@
+Cython
+joblib
+numpy
+pandas
+pysam
+snakemake
+toml
+tqdm

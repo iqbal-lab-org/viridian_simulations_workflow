@@ -6,12 +6,28 @@ A workflow to simulate SARS-CoV-2 amplicons and reads for assembly with [viridia
 
 A working pipeline to generate and assemble synthetic SARS-CoV-2 amplicons. Mismatches are detected between primers and their target sequences amd if present, PCR artifacts are simulated. With probabilities of 0.5, primers in amplicons are reverted to the reference primer target sequence or amplicon sequencing coverage is reduced for the amplicon. VGsim is used to simulate a SARS-CoV-2 phylogeny from a reference sequence and neutral evolution along the tree is then simulated with phastSim. A custom script splits the simulated genomes into amplicons based on the specified artic nCoV-2019 primer scheme and the error mode is simulated. Read sequencing is simulated using art_illumina for simulated Illumina reads or Badread for Nanopore reads, at coverages determined by the previous step. Viridian_workflow is run to map the simulated reads to the reference sequence and assemble into a consensus sequence. The simulated sequences are then masked, whereby bases that are only represented by low coverage amplicons are masked with Ns.
 
+# Installation
+
+```
+# download the repository
+git clone https://github.com/iqbal-lab-org/viridian_simulations_workflow
+cd viridian_simulations_workflow
+# build the containers
+python singularity/build_images.py
+cd ..
+```
+
+# Usage
+
+```snakemake --cores 1 assess_assemblies```
+
 # Configuration
 
 ## General
 * ```processes```: Number of threads to extract amplicon sequences and run ART_illumina.
 * ```reference_genome```: A SARS-CoV-2 reference genome for simulations and read mapping.
-* ```proportion_illumina```: Proportion of total number of simulated genomes that will become simulated illumina reads. The remaining fraction become Nanopore simulated reads.
+* ```divide_genomes```: Randomly assign genomes to simulate illumina or nanopore reads byt proportion.
+* ```proportion_illumina```: Proportion of total number of simulated genomes that will become simulated illumina reads. The remaining fraction become Nanopore simulated reads. Required for ```divide_genomes=True```.
 * ```primer_scheme```: The artic nCoV-2019 primer scheme (V3, V4 or V4.1).
 
 ## VGsim:
