@@ -1,17 +1,12 @@
 import glob
 import gzip
 from joblib import Parallel, delayed
-import json
 import os
-import pandas as pd
 import pickle
 import random
 import shutil
 import subprocess
-import sys
 from tqdm import tqdm
-
-from error_modes import find_primer_scheme, extract_amplicons, clean_genome
 
 configfile: 'config.yml'
 
@@ -74,51 +69,12 @@ rule split_amplicons:
         match_coverage_sd=config['split_amplicons']['match_coverage_sd'],
         mismatch_coverage_mean=config['split_amplicons']['mismatch_coverage_mean'],
         mismatch_coverage_sd=config['split_amplicons']['mismatch_coverage_sd'],
-        processes=config['processes']
-    run:
-        # import correct primers for primer scheme
-        primer_df, pool1_primers, pool2_primers = find_primer_scheme(params.primer_scheme)
-        # create output directory
-        output_dir = output[0]
-        if not os.path.exists(output_dir):
-            os.mkdir(output_dir)
-        # split input genomic sequences into amplicons by left primer start and right primer end
-        sequence_files = glob.glob(os.path.join(input[0], '*.fasta'))
-        sys.stderr.write('\nAligning primers and splitting simulated sequences into amplicons\n')
-        sample_coverages = {}
-        error_stats = {}
-        # parallelise amplicon splitting
-        job_list = [
-            sequence_files[i:i + params.processes] for i in range(0, len(sequence_files), params.processes)
-        ]
-        for subset in tqdm(job_list):
-            amplicon_results = Parallel(n_jobs=params.processes, prefer="threads")(delayed(extract_amplicons)(primer_df,
-                                                                                                              genomic_sequence,
-                                                                                                              params.random_dropout_probability,
-                                                                                                              params.match_coverage_mean,
-                                                                                                              params.match_coverage_sd,
-                                                                                                              params.mismatch_coverage_mean,
-                                                                                                              params.mismatch_coverage_sd,
-                                                                                                              params.primer_dimer_probability,
-                                                                                                              pool1_primers,
-                                                                                                              pool2_primers,
-                                                                                                              params.seed,
-                                                                                                              output_dir) for genomic_sequence in subset)
-            for elem in amplicon_results:
-                 for sample in elem:
-                    sample_coverages[sample] = elem[sample][0]
-                    error_stats[sample] = elem[sample][1]
-        # Pickle the output
-        sys.stderr.write("\nPickling the output\n")
-        with open(os.path.join(output_dir, 'amplicon_coverages.pickle'), 'wb') as ampOut:
-            # Pickle using the highest protocol available.
-            pickle.dump(sample_coverages, ampOut, pickle.HIGHEST_PROTOCOL)
-        # save amplicon error statistics
-        sys.stderr.write("\nPickling the error statistics\n")
-        with open(os.path.join(output_dir, 'amplicon_statistics.pickle'), 'wb') as statOut:
-            pickle.dump(error_stats, statOut, pickle.HIGHEST_PROTOCOL)
-        with open(os.path.join(output_dir, 'amplicon_statistics.json'), 'w') as jsonOut:
-            jsonOut.write(json.dumps(error_stats))
+        threads=config['threads']
+    shell:
+        "python scripts/error_modes.py --scheme {params.primer_scheme} --input-dir {input} --output-dir {output} --seed {params.seed} \
+            --dropout-prob {params.random_dropout_probability} --dimer-prob {params.primer_dimer_probability} \
+            --match-mean {params.match_coverage_mean} --match-sd {params.match_coverage_sd} --mismatch-mean {params.mismatch_coverage_mean} \
+            --mismatch-sd {params.mismatch_coverage_sd} --threads {params.threads}"
 
 rule simulate_reads:
     input:
@@ -126,7 +82,7 @@ rule simulate_reads:
     output:
         directory('read_output')
     params:
-        processes=config['processes'],
+        threads=config['threads'],
         divide_genomes=config["divide_genomes"],
         prop_illumina=config['proportion_illumina'],
         read_length=config["simulate_reads"]["illumina_read_length"],
@@ -188,19 +144,19 @@ rule simulate_reads:
             nanopore_samples = samples
         # parallelise ART
         illumina_list = [
-            illumina_samples[i:i + params.processes] for i in range(0, len(illumina_samples), params.processes)
+            illumina_samples[i:i + params.threads] for i in range(0, len(illumina_samples), params.threads)
         ]
         for illumina_subset in tqdm(illumina_list):
-            Parallel(n_jobs=params.processes, prefer="threads")(delayed(simulate_ART_reads)(genome,
+            Parallel(n_jobs=params.threads, prefer="threads")(delayed(simulate_ART_reads)(genome,
                                                                                             art_output,
                                                                                             sample_coverages,
                                                                                             str(params.read_length)) for genome in illumina_subset)
         # parallelise Badread
         nanopore_list = [
-            nanopore_samples[i:i + params.processes] for i in range(0, len(nanopore_samples), params.processes)
+            nanopore_samples[i:i + params.threads] for i in range(0, len(nanopore_samples), params.threads)
         ]
         for nanopore_subset in tqdm(nanopore_list):
-            Parallel(n_jobs=params.processes, prefer="threads")(delayed(simulate_badreads)(genome,
+            Parallel(n_jobs=params.threads, prefer="threads")(delayed(simulate_badreads)(genome,
                                                                                            badread_output,
                                                                                            sample_coverages) for genome in nanopore_subset)
 
@@ -251,7 +207,7 @@ rule run_viridian:
     output:
         directory('viridian_assemblies')
     params:
-        processes=config['processes']
+        threads=config['threads']
     run:
         def illumina_viridian_workflow(reference_genome,
                                        sample,
@@ -289,18 +245,18 @@ rule run_viridian:
                 os.mkdir(directory)
         # parallelise assembly of ART reads
         art_list = [
-            art_samples[i:i + params.processes] for i in range(0, len(art_samples), params.processes)
+            art_samples[i:i + params.threads] for i in range(0, len(art_samples), params.threads)
         ]
         for art_set in art_list:
-            Parallel(n_jobs=params.processes, prefer="threads")(delayed(illumina_viridian_workflow)(input[1],
+            Parallel(n_jobs=params.threads, prefer="threads")(delayed(illumina_viridian_workflow)(input[1],
                                                                                                     sample,
                                                                                                     os.path.join(output[0], "ART_assemblies")) for sample in art_set)
         # parallelise assembly of Badread reads
         badread_list = [
-            badread_samples[i:i + params.processes] for i in range(0, len(badread_samples), params.processes)
+            badread_samples[i:i + params.threads] for i in range(0, len(badread_samples), params.threads)
         ]
         for bad_set in badread_list:
-            Parallel(n_jobs=params.processes, prefer="threads")(delayed(nanopore_viridian_workflow)(input[1],
+            Parallel(n_jobs=params.threads, prefer="threads")(delayed(nanopore_viridian_workflow)(input[1],
                                                                                                     sample,
                                                                                                     os.path.join(output[0], "Badread_assemblies")) for sample in bad_set)
 

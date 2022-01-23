@@ -171,4 +171,8 @@ read_output
 concatenated_reads
 viridian_output
 masked_truth_assemblies
-viridian_performance
+varifier_statistics
+
+# singularity containers
+singularity/images/*
+

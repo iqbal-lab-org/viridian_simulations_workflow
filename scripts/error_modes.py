@@ -1,4 +1,6 @@
 import argparse
+import glob
+from joblib import Parallel, delayed
 import numpy as np
 import os
 import pandas as pd
@@ -101,7 +103,9 @@ def correct_alignment(sample_sequence,
     mismatch_str += str(from_end)
     # return a list of tuples
     sam_tags = [("NM", mismatches), ("MD", mismatch_str)]
-    return sam_tags
+    # correct end position of primer
+    bed_content[2] = primer_start + len(primer_seq)
+    return sam_tags, bed_content
 
 def align_primers(genomic_sequence,
                   primer_df,
@@ -121,11 +125,12 @@ def align_primers(genomic_sequence,
         bam_file = os.path.join(temp_dir, row['name'] + '.bam')
         bed_file = os.path.join(temp_dir, row['name'] + '.bed')
         # aln primer to genomic sequence using bwa, then convert to sam, bam and bed files
-        map_command = 'bwa/bwa index ' + genomic_sequence + ' && bwa/bwa aln -n 4 ' + genomic_sequence + ' ' + primer_fasta
-        map_command += ' > ' + os.path.join(temp_dir, row['name'] + '.sai') + '; bwa/bwa samse ' + genomic_sequence
+        map_command = 'singularity run singularity/images/BWA.img index ' + genomic_sequence + ' && singularity run singularity/images/BWA.img aln -n 4 '
+        map_command += genomic_sequence + ' ' + primer_fasta + ' > ' + os.path.join(temp_dir, row['name'] + '.sai')
+        map_command += '; singularity run singularity/images/BWA.img samse ' + genomic_sequence
         map_command += ' ' + os.path.join(temp_dir, row['name'] + '.sai') +  ' ' + primer_fasta
-        map_command += ' > ' + alignment_file + ' && samtools/samtools view -Sb ' + alignment_file + ' > ' + bam_file
-        map_command += ' && bedtools2/bin/bamToBed -i ' + bam_file + ' > ' + bed_file
+        map_command += ' > ' + alignment_file + ' && singularity run singularity/images/Samtools.img view -Sb ' + alignment_file + ' > ' + bam_file
+        map_command += ' && singularity run singularity/images/Bedtools.img bamToBed -i ' + bam_file + ' > ' + bed_file
         subprocess.run(map_command, shell=True, check=True)
         # open the bed and sam files
         with open(bed_file, 'r') as bedIn:
@@ -135,10 +140,10 @@ def align_primers(genomic_sequence,
         for mapped in samfile:
             sam_tags = mapped.tags
             if not mapped.cigar[0][1] == 0:
-                sam_tags = correct_alignment(sample_sequence,
-                                             bed_content,
-                                             mapped.query_sequence,
-                                             mapped.is_reverse)
+                sam_tags, bed_content = correct_alignment(sample_sequence,
+                                                          bed_content,
+                                                          mapped.query_sequence,
+                                                          mapped.is_reverse)
             mismatches = [tag[1] for tag in sam_tags if tag[0] == "NM"][0]
             mismatch_dict = {}
             if not mismatches == 0:
@@ -357,42 +362,92 @@ def extract_amplicons(primer_df,
             outFasta.write('>' + primer_id + '\n' + amplicon)
     return {str(sample_name): [amplicon_coverages, amplicon_stats]}
 
+def get_options():
+    """Parse command line args"""
+    parser = argparse.ArgumentParser(description='Split genomic sequences into amplicons and simulate PCR/sequencing error modes.')
+    parser.add_argument("--scheme", dest="primer_scheme", required=True,
+                        help="artic primer scheme to use",
+                        choices=["V3", "V4", "V4.1"],
+                        type=str)
+    parser.add_argument("--input-dir", dest="input_dir", required=True,
+                        help="directory containing simulated sequences",
+                        type=str)
+    parser.add_argument("--output-dir", dest="output_dir", required=True,
+                        help="name of output directory",
+                        type=str)
+    parser.add_argument("--seed", dest="seed", required=True,
+                        help="seed for simulations",
+                        type=int)
+    parser.add_argument("--dropout-prob", dest="random_dropout_probability", required=True,
+                        help="probability of amplicon random dropout",
+                        type=float)
+    parser.add_argument("--dimer-prob", dest="primer_dimer_probability", required=True,
+                        help="probability of primer dimers if pooled primer sequences overlap at the ends",
+                        type=float)
+    parser.add_argument("--match-mean", dest="match_coverage_mean", required=True,
+                        help="mean sequencing coverage for amplicons with exactly matching primers",
+                        type=float)
+    parser.add_argument("--match-sd", dest="match_coverage_sd", required=True,
+                        help="standard deviation of sequencing coverages for amplicons with exactly matching primers",
+                        type=float)
+    parser.add_argument("--mismatch-mean", dest="mismatch_coverage_mean", required=True,
+                        help="mean sequencing coverage for amplicons with mismatching primers",
+                        type=float)
+    parser.add_argument("--mismatch-sd", dest="mismatch_coverage_sd", required=True,
+                        help="standard deviation of sequencing coverages for amplicons with mismatching primers",
+                        type=float)
+    parser.add_argument("--threads", dest="threads", required=True,
+                        help="number of threads to use",
+                        type=int)
+    args = parser.parse_args()
+    return args
+
 def main():
+    # parse commmand line args
+    args = get_options()
     # import correct primers for primer scheme
-    primer_df, pool1_primers, pool2_primers = find_primer_scheme("V4.1")
-    sequence_files = ['1.fasta']
-    output_dir = 'amplicon_sequences_test'
-    if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
+    primer_df, pool1_primers, pool2_primers = find_primer_scheme(args.primer_scheme)
+    # create output directory
+    if not os.path.exists(args.output_dir):
+        os.mkdir(args.output_dir)
+    # split input genomic sequences into amplicons by left primer start and right primer end
+    sequence_files = glob.glob(os.path.join(args.input_dir, '*.fasta'))
     sys.stderr.write('\nAligning primers and splitting simulated sequences into amplicons\n')
     sample_coverages = {}
     error_stats = {}
-    for genome in tqdm(sequence_files):
-        # we need to extract the amplicon sequences based on the best matching primer pairs
-        amplicon_results = extract_amplicons(primer_df,
-                                             genome,
-                                             0.01,
-                                             500,
-                                             20,
-                                             5,
-                                             1,
-                                             1,
-                                             pool1_primers,
-                                             pool2_primers,
-                                             2022,
-                                             output_dir)
-        for sample in amplicon_results:
-            sample_coverages[sample] = amplicon_results[sample][0]
-            error_stats[sample] = amplicon_results[sample][1]
+    # parallelise amplicon splitting
+    job_list = [
+        sequence_files[i:i + args.threads] for i in range(0, len(sequence_files), args.threads)
+    ]
+    for subset in tqdm(job_list):
+        amplicon_results = Parallel(n_jobs=args.threads, prefer="threads")(delayed(extract_amplicons)(primer_df,
+                                                                                                      genomic_sequence,
+                                                                                                      args.random_dropout_probability,
+                                                                                                      args.match_coverage_mean,
+                                                                                                      args.match_coverage_sd,
+                                                                                                      args.mismatch_coverage_mean,
+                                                                                                      args.mismatch_coverage_sd,
+                                                                                                      args.primer_dimer_probability,
+                                                                                                      pool1_primers,
+                                                                                                      pool2_primers,
+                                                                                                      args.seed,
+                                                                                                      args.output_dir) for genomic_sequence in subset)
+        for elem in amplicon_results:
+            for sample in elem:
+                sample_coverages[sample] = elem[sample][0]
+                error_stats[sample] = elem[sample][1]
     # Pickle the output
-    sys.stderr.write("\nPickling the amplicon coverages\n")
-    with open(os.path.join(output_dir, 'amplicon_coverages.pickle'), 'wb') as ampOut:
+    sys.stderr.write("\nPickling the output\n")
+    with open(os.path.join(args.output_dir, 'amplicon_coverages.pickle'), 'wb') as ampOut:
         # Pickle using the highest protocol available.
         pickle.dump(sample_coverages, ampOut, pickle.HIGHEST_PROTOCOL)
     # save amplicon error statistics
     sys.stderr.write("\nPickling the error statistics\n")
-    with open(os.path.join(output_dir, 'amplicon_statistics.pickle'), 'wb') as statOut:
-       pickle.dump(error_stats, statOut, pickle.HIGHEST_PROTOCOL)
+    with open(os.path.join(args.output_dir, 'amplicon_statistics.pickle'), 'wb') as statOut:
+        pickle.dump(error_stats, statOut, pickle.HIGHEST_PROTOCOL)
+    with open(os.path.join(args.output_dir, 'amplicon_statistics.json'), 'w') as jsonOut:
+        jsonOut.write(json.dumps(error_stats))
+    sys.exit(0)
 
 if __name__== '__main__':
     main()
