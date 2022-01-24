@@ -311,22 +311,16 @@ def extract_amplicons(primer_df,
             dimer = False
             # check if primer dimers can occur between either primers and any others in the pool
             for seq in pool_seqs:
-                if left_primers['seq'][position][-3:] == seq[:3] \
-                    and np.random.binomial(n=1, p=(dimer_prob)) == 1:
-                    amplicon = left_primers['seq'][position][-3:] + seq
-                    dimer = True
-                if left_primers['seq'][position][:3] == seq[-3:] \
-                    and np.random.binomial(n=1, p=(dimer_prob)) == 1:
-                    amplicon = seq[-3:] + left_primers['seq'][position]
-                    dimer = True
-                if right_primers['seq'][position][-3:] == seq[:3] \
-                    and np.random.binomial(n=1, p=(dimer_prob)) == 1:
-                    amplicon = right_primers['seq'][position][-3:] + seq
-                    dimer = True
-                if right_primers['seq'][position][:3] == seq[-3:] \
-                    and np.random.binomial(n=1, p=(dimer_prob)) == 1:
-                    amplicon = seq[-3:] + right_primers['seq'][position]
-                    dimer = True
+                for dimer_seq in [left_primers["seq"][position], right_primers["seq"][position]]: 
+                    if dimer_seq[-3:] == reverse_complement(seq[:3]) \
+                        and np.random.binomial(n=1, p=(dimer_prob)) == 1:
+                        amplicon = dimer_seq[:-3] + reverse_complement(seq)
+                    elif seq[-3:] == reverse_complement(dimer_seq[:3]) \
+                        and np.random.binomial(n=1, p=(dimer_prob)) == 1:
+                        amplicon = seq[-3:] + reverse_complement(dimer_seq)
+                        dimer = True
+                    else:
+                        pass
             if dimer:
                 amplicon_stats[primer_id]['has_error'] = True
                 amplicon_stats[primer_id]["errors"].append("primer_dimer")

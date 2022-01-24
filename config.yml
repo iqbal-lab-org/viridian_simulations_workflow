@@ -2,7 +2,7 @@ threads: 7
 reference_genome: reference_genome.fasta
 divide_genomes: True
 proportion_illumina: 0.90
-primer_scheme: V4.1
+primer_scheme: V3
 seed: 2022
 
 VGsim:
@@ -19,7 +19,7 @@ phastSim:
 
 split_amplicons:
   random_dropout_probability: 0.001
-  primer_dimer_probability: 0.5
+  primer_dimer_probability: 1
   match_coverage_mean: 500
   match_coverage_sd: 20
   mismatch_coverage_mean: 5

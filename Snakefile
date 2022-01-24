@@ -8,6 +8,8 @@ import shutil
 import subprocess
 from tqdm import tqdm
 
+from scripts.error_modes import clean_genome
+
 configfile: 'config.yml'
 
 rule VGsim_tree:
@@ -284,7 +286,7 @@ rule mask_assemblies:
                 sample_stats = amplicon_stats[sample]
                 all_amplicons = list(sample_stats.keys())
                 # import the simulated squence
-                filename = str(sample)+".fasta"
+                filename = str(sample) + ".fasta"
                 sample_name, sample_sequence = clean_genome(os.path.join(input[0], filename))
                 sample_sequence = list(sample_sequence)
                 # look through the amplicon statistics to see if an amplicon needs to be masked
@@ -293,15 +295,8 @@ rule mask_assemblies:
                         or "random_dropout" in sample_stats[all_amplicons[amplicon]]["errors"] \
                         or "primer_dimer" in sample_stats[all_amplicons[amplicon]]["errors"]:
                         # we are masking regions with low coverage that are not covered by the adjacent amplicons
-                        if not (amplicon == 0 and amplicon == len(all_amplicons) - 1):
-                            mask_start = sample_stats[all_amplicons[amplicon-1]]["amplicon_end"]
-                            mask_end = sample_stats[all_amplicons[amplicon+1]]["amplicon_start"]
-                        elif amplicon == 0:
-                            mask_start = sample_stats[all_amplicons[amplicon]]["amplicon_start"]
-                            mask_end = sample_stats[all_amplicons[amplicon+1]]["amplicon_start"]
-                        else:
-                            mask_start = sample_stats[all_amplicons[amplicon-1]]["amplicon_end"]
-                            mask_end = sample_stats[all_amplicons[amplicon]]["amplicon_end"]
+                        mask_start = sample_stats[all_amplicons[amplicon]]["amplicon_start"]
+                        mask_end = sample_stats[all_amplicons[amplicon]]["amplicon_end"]
                         # replace the masked sequence with Ns
                         sample_sequence[mask_start:mask_end] = list("N"*(mask_end-mask_start))
                 # write out the masked simulated sequence
@@ -311,7 +306,8 @@ rule mask_assemblies:
 rule truth_vcfs:
     input:
         masked_assemblies=rules.mask_assemblies.output,
-        reference_genome=config["reference_genome"]
+        reference_genome=config["reference_genome"],
+        amplicon_sequences=rules.split_amplicons.output
     output:
         directory("truth_vcfs")
     params:
@@ -335,11 +331,11 @@ rule truth_vcfs:
         # load list of assemblies
         assemblies = glob.glob(os.path.join(input[0], "*.fasta"))
         # import the amplicon statistics file to extract what parts of the assembly are covered by amplicons
-        with open(os.path.join(input[1], 'amplicon_statistics.pickle'), 'rb') as statIn:
+        with open(os.path.join(input[2], 'amplicon_statistics.pickle'), 'rb') as statIn:
             amplicon_stats = pickle.load(statIn)
         regions_covered = {}
         for sample in amplicon_stats:
-            amplicons = amplicon_stats[sample].keys()
+            amplicons = list(amplicon_stats[sample].keys())
             regions_covered[sample] = {"start": str(amplicon_stats[sample][amplicons[0]]["amplicon_start"]),
                                        "end": str(amplicon_stats[sample][amplicons[len(amplicons)-1]]["amplicon_end"])}
         # parallelise make_truth_vcf
@@ -348,9 +344,9 @@ rule truth_vcfs:
         ]
         for subset in subsetted_assemblies:
             Parallel(n_jobs=params.threads, prefer="threads")(delayed(run_varifier)(sample,
-                                                                                    regions_covered[sample], 
+                                                                                    regions_covered[os.path.basename(sample).replace(".fasta", "")], 
                                                                                     input[1],
-                                                                                    output[0]) for sample in subset)
+                                                                                    os.path.join(output[0], os.path.basename(sample).replace(".fasta", ""))) for sample in subset)
 
 rule assess_assemblies:
     input:
@@ -373,7 +369,7 @@ rule assess_assemblies:
         # iterate through assemblies and run varifier
         for assem in art_assemblies + badread_assemblies:
             vcf_file = os.path.join(assem, "variants.vcf")
-            truth_vcf = ""
+            truth_vcf = os.path.join(input[3], os.path.basename(assem), "04.truth.vcf")
             truth_genome = os.path.join(input[1], os.path.basename(assem) + ".fasta")
             output_dir = os.path.join(output[0], os.path.join(assem.split("/")[-2], os.path.basename(assem)))
             varifier_command = "singularity run varifier/varifier.img vcf_eval --truth_vcf " + truth_vcf + " " 
