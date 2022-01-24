@@ -308,11 +308,56 @@ rule mask_assemblies:
                 with open(os.path.join(output[0], filename), "w") as outGen:
                     outGen.write("\n".join([">" + sample_name, "".join(sample_sequence)]))
 
+rule truth_vcfs:
+    input:
+        masked_assemblies=rules.mask_assemblies.output,
+        reference_genome=config["reference_genome"]
+    output:
+        directory("truth_vcfs")
+    params:
+        threads=config["threads"]
+    run:
+        def run_varifier(assembly,
+                         covered,
+                         reference,
+                         output_dir):
+            """Run varifier make_truth_vcf on the masked assemblies"""
+            covered_start = covered["start"]
+            covered_end = covered["end"]
+            varifier_command = "singularity run varifier/varifier.img make_truth_vcf --global_align "
+            varifier_command += "--global_align_min_coord " + covered_start + " --global_align_max_coord " + covered_end
+            varifier_command += " " + assembly + " " + reference + " " + output_dir
+            subprocess.run(varifier_command, shell=True, check=True)
+
+        # make directory
+        if not os.path.exists(output[0]):
+            os.mkdir(output[0])
+        # load list of assemblies
+        assemblies = glob.glob(os.path.join(input[0], "*.fasta"))
+        # import the amplicon statistics file to extract what parts of the assembly are covered by amplicons
+        with open(os.path.join(input[1], 'amplicon_statistics.pickle'), 'rb') as statIn:
+            amplicon_stats = pickle.load(statIn)
+        regions_covered = {}
+        for sample in amplicon_stats:
+            amplicons = amplicon_stats[sample].keys()
+            regions_covered[sample] = {"start": str(amplicon_stats[sample][amplicons[0]]["amplicon_start"]),
+                                       "end": str(amplicon_stats[sample][amplicons[len(amplicons)-1]]["amplicon_end"])}
+        # parallelise make_truth_vcf
+        subsetted_assemblies = [
+            assemblies[i:i + params.threads] for i in range(0, len(assemblies), params.threads)
+        ]
+        for subset in subsetted_assemblies:
+            Parallel(n_jobs=params.threads, prefer="threads")(delayed(run_varifier)(sample,
+                                                                                    regions_covered[sample], 
+                                                                                    input[1],
+                                                                                    output[0]) for sample in subset)
+
 rule assess_assemblies:
     input:
         viridian_assemblies=rules.run_viridian.output,
         simulated_genomes=rules.mask_assemblies.output,
-        reference_genome=config["reference_genome"]
+        reference_genome=config["reference_genome"],
+        truth_vcf=rules.truth_vcfs.output
     output:
         directory('varifier_statistics')
     run:
@@ -328,9 +373,11 @@ rule assess_assemblies:
         # iterate through assemblies and run varifier
         for assem in art_assemblies + badread_assemblies:
             vcf_file = os.path.join(assem, "variants.vcf")
+            truth_vcf = ""
             truth_genome = os.path.join(input[1], os.path.basename(assem) + ".fasta")
             output_dir = os.path.join(output[0], os.path.join(assem.split("/")[-2], os.path.basename(assem)))
-            varifier_command = "singularity run varifier/varifier.img vcf_eval " + truth_genome + " " + input[2] + " " + vcf_file + " " + output_dir
+            varifier_command = "singularity run varifier/varifier.img vcf_eval --truth_vcf " + truth_vcf + " " 
+            varifier_command += truth_genome + " " + input[2] + " " + vcf_file + " " + output_dir
             shell(varifier_command)
         # generate a precion recall curve for all of the assemblies
         # can make a truth vcf adn use this as input

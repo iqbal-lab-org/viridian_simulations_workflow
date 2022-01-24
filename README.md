@@ -18,7 +18,6 @@ source ./venv/bin/activate
 pip install -r requirements.txt
 # build the containers
 python singularity/build_images.py
-cd ..
 ```
 
 # Usage
