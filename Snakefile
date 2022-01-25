@@ -295,8 +295,8 @@ rule mask_assemblies:
                         or "random_dropout" in sample_stats[all_amplicons[amplicon]]["errors"] \
                         or "primer_dimer" in sample_stats[all_amplicons[amplicon]]["errors"]:
                         # we are masking regions with low coverage that are not covered by the adjacent amplicons
-                        mask_start = sample_stats[all_amplicons[amplicon]]["amplicon_start"]
-                        mask_end = sample_stats[all_amplicons[amplicon]]["amplicon_end"]
+                        mask_start = sample_stats[all_amplicons[amplicon-1]]["right_primer_start"]
+                        mask_end = sample_stats[all_amplicons[amplicon+1]]["left_primer_end"]
                         # replace the masked sequence with Ns
                         sample_sequence[mask_start:mask_end] = list("N"*(mask_end-mask_start))
                 # write out the masked simulated sequence

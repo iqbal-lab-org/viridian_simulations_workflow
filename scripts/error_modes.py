@@ -284,7 +284,9 @@ def extract_amplicons(primer_df,
                                                         left_primers['start'][position])
         # populate the amplicon statistics dictionary
         amplicon_stats[primer_id] = {"amplicon_start": int(left_primers['start'][position]),
+                                    "left_primer_end": int(left_primers['end'][position]),
                                     "amplicon_end": int(right_primers['end'][position]),
+                                    "right_primer_start": int(right_primers['start'][position]),
                                     "has_error": False,
                                     "errors": [],
                                     "primer_mismatches": total_primer_mismatches,
@@ -315,10 +317,15 @@ def extract_amplicons(primer_df,
                     if dimer_seq[-3:] == reverse_complement(seq[:3]) \
                         and np.random.binomial(n=1, p=(dimer_prob)) == 1:
                         amplicon = dimer_seq[:-3] + reverse_complement(seq)
+                        dimer = True 
+                        if dimer_seq == right_primers["seq"][position]:
+                            amplicon = reverse_complement(amplicon)
                     elif seq[-3:] == reverse_complement(dimer_seq[:3]) \
                         and np.random.binomial(n=1, p=(dimer_prob)) == 1:
                         amplicon = seq[-3:] + reverse_complement(dimer_seq)
                         dimer = True
+                        if dimer_seq == right_primers["seq"][position]:
+                            amplicon = reverse_complement(amplicon)
                     else:
                         pass
             if dimer:
