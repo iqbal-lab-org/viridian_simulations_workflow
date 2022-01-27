@@ -126,7 +126,7 @@ def align_primers(genomic_sequence,
         bam_file = os.path.join(temp_dir, row['name'] + '.bam')
         bed_file = os.path.join(temp_dir, row['name'] + '.bed')
         # aln primer to genomic sequence using bwa, then convert to sam, bam and bed files
-        map_command = 'singularity run singularity/images/BWA.img index ' + genomic_sequence + ' && singularity run singularity/images/BWA.img aln -n 4 '
+        map_command = 'singularity run singularity/images/BWA.img index ' + genomic_sequence + ' && singularity run singularity/images/BWA.img aln -n 3 '
         map_command += genomic_sequence + ' ' + primer_fasta + ' > ' + os.path.join(temp_dir, row['name'] + '.sai')
         map_command += '; singularity run singularity/images/BWA.img samse ' + genomic_sequence
         map_command += ' ' + os.path.join(temp_dir, row['name'] + '.sai') +  ' ' + primer_fasta
@@ -154,14 +154,15 @@ def align_primers(genomic_sequence,
                 absolute_position = 0
                 for pos in range(len(positions)-1):
                     if positions[pos].isnumeric():
-                        current = int(positions[pos]) 
+                        current = int(positions[pos])
                         adjacent_char = positions[pos+1]
                         # need to adjust the .sam positions
                         if not pos == 0:
                             current = absolute_position + current + 1
                         absolute_position += current
                         mismatch_dict[current] = adjacent_char
-            alignment_stats[row['name']] = {"mismatches": mismatches, "positions": mismatch_dict}
+            alignment_stats[row['name']] = {"mismatches": mismatches,
+                                            "positions": mismatch_dict}
         # extract start and end position of aligned primer
         aligned_starts.append(int(bed_content[1]))
         aligned_ends.append(int(bed_content[2]))
@@ -190,7 +191,7 @@ def refine_primers(primer_df,
         if both match, then the non-alternative primer is selected"""
     rows_to_drop = []
     for name in range(len(primer_df["name"])-1):
-        if "alt" in primer_df["name"][name+1]:
+        if "alt" in primer_df["name"][name+1] and primer_df["start"][name+1] < primer_df["start"][name] + len(primer_df["seq"][name]):
             if alignment_stats[primer_df["name"][name]]["mismatches"] <= alignment_stats[primer_df["name"][name + 1]]["mismatches"]:
                 # drop the alternate primer if it is not the best match
                 rows_to_drop.append(name+1)
@@ -311,10 +312,11 @@ def extract_amplicons(primer_df,
             dimer = False
             # check if primer dimers can occur between either primers and any others in the pool
             for seq in pool_seqs:
-                for dimer_seq in [left_primers["seq"][position], right_primers["seq"][position]]: 
+                for dimer_seq in [left_primers["seq"][position], right_primers["seq"][position]]:
                     if dimer_seq[-3:] == reverse_complement(seq[:3]) \
                         and np.random.binomial(n=1, p=(dimer_prob)) == 1:
                         amplicon = dimer_seq[:-3] + reverse_complement(seq)
+                        dimer = True
                     elif seq[-3:] == reverse_complement(dimer_seq[:3]) \
                         and np.random.binomial(n=1, p=(dimer_prob)) == 1:
                         amplicon = seq[-3:] + reverse_complement(dimer_seq)

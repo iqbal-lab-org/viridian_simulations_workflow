@@ -375,8 +375,8 @@ rule assess_assemblies:
             varifier_command = "singularity run varifier/varifier.img vcf_eval --truth_vcf " + truth_vcf + " " 
             varifier_command += truth_genome + " " + input[2] + " " + vcf_file + " " + output_dir
             shell(varifier_command)
-        # generate a precion recall curve for all of the assemblies
-        # can make a truth vcf adn use this as input
+        # generate a scatterplot results
+        
 
 rule clean_outputs:
     input:
@@ -388,7 +388,9 @@ rule clean_outputs:
         cat_reads=rules.cat_reads.output,
         run_viridian=rules.run_viridian.output,
         simulated_genomes=rules.mask_assemblies.output,
-        viridian_eval=rules.assess_assemblies.output
+        viridian_eval=rules.assess_assemblies.output,
+        truth_vcfs=rules.truth_vcfs.output
     shell:
         'rm -rf {input.VGsim_output} {input.phastSim_output} {input.split_sequences} {input.split_amplicons} \
-                {input.read_output} {input.cat_reads} {input.run_viridian} {input.simulated_genomes} {input.viridian_eval}'
+                {input.read_output} {input.cat_reads} {input.run_viridian} {input.simulated_genomes} {input.viridian_eval} \
+                {input.truth_vcfs}'

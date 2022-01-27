@@ -3,8 +3,6 @@ From: ubuntu:20.04
 
 %setup
     mkdir ${SINGULARITY_ROOTFS}/viridian_simulations_workflow
-    rsync -a requirements.txt error_modes.py LICENSE README.md V3 V4 V4.1 ${SINGULARITY_ROOTFS}/viridian_simulations_workflow/
-
 
 %post
     export DEBIAN_FRONTEND=noninteractive
