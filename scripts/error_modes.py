@@ -181,6 +181,18 @@ def clean_genome(fasta_file):
     sample_sequence = ''.join(fasta[1:])
     return sample_name, sample_sequence
 
+def populate_primer_dfs(left_primers, right_primers):
+    """Several primers have alternate entries, this function duplicates rows so all primer combinations are considered"""
+    left_basenames = np.array(['_'.join(name.split('_')[:2]) for name in list(left_primers['name'])])
+    right_basenames = np.array(['_'.join(name.split('_')[:2]) for name in list(right_primers['name'])])
+    # generate 2D array of all left and right primer combinations and get indices of primer pairs
+    matches = np.where([[left_basenames[i] == right_basenames[j] for j in range(0, len(right_basenames))] \
+            for i in range(0, len(left_basenames))])
+    # generate extended dataframe considering all possible alternate primer pairs
+    populated_left_df = left_primers.iloc[matches[0]].reset_index(drop=True)
+    populated_right_df = right_primers.iloc[matches[1]].reset_index(drop=True)
+    return populated_left_df, populated_right_df
+
 def refine_primers(primer_df,
                    alignment_stats):
     """This function selects the best matching left and right primer for each amplicon \
@@ -198,6 +210,8 @@ def refine_primers(primer_df,
     mask = primer_df['name'].str.contains('LEFT')
     left_primers = primer_df[mask].reset_index()
     right_primers = primer_df[~mask].reset_index()
+    # if alternate primers are included we need to expand the primer dfs so all primers have a mate
+    left_primers, right_primers = populate_primer_dfs(left_primers, right_primers)
     if len(left_primers) == len(right_primers):
         return left_primers, right_primers
     else:

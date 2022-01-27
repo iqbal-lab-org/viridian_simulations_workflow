@@ -1,4 +1,4 @@
-threads: 7
+threads: 10
 reference_genome: reference_genome.fasta
 divide_genomes: True
 proportion_illumina: 0.90
