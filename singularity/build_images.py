@@ -9,9 +9,7 @@ recipes = ["VGsim",
            "phastSim",
            "ART",
            "Badread",
-           "BWA",
-           "Bedtools",
-           "Samtools"]
+           "Map"]
 # build image
 for recipe in recipes:
     build_command = "singularity build --force --fakeroot singularity/images/"

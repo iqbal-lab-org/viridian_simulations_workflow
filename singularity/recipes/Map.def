@@ -2,15 +2,14 @@ Bootstrap: library
 From: ubuntu:20.04
 
 %setup
-    mkdir ${SINGULARITY_ROOTFS}/viridian_simulations
+    mkdir ${SINGULARITY_ROOTFS}/scripts
 
 %post
     export DEBIAN_FRONTEND=noninteractive
 
-    cd ${SINGULARITY_ROOTFS}/viridian_simulations
     # apt-get install python and git
     apt-get update
-    apt install -y software-properties-common
+    apt-get install -y software-properties-common
     add-apt-repository universe
     apt-get install -y \
         make \
@@ -42,6 +41,26 @@ From: ubuntu:20.04
     ./configure
     make
     cd ..
+    # install bwa
+    git clone https://github.com/lh3/bwa.git
+    cd bwa
+    make
+    cd ..
+    # install Bedtools2
+    wget https://github.com/arq5x/bedtools2/releases/download/v2.30.0/bedtools-2.30.0.tar.gz
+    tar -zxvf bedtools-2.30.0.tar.gz
+    cd bedtools2
+    make
+    cd ..
+    # add python scripts to PATH
+    chmod +x /scripts/align_primers.py
+    echo 'export PATH=$PATH:/scripts' >> $SINGULARITY_ENVIRONMENT
+
+%files
+    scripts/align_primers.py /scripts/align_primers.py
 
 %runscript
-    ${SINGULARITY_ROOTFS}/viridian_simulations/samtools/samtools "$@"
+    python scripts/align_primers.py --bwa-path ${SINGULARITY_ROOTFS}/bwa/bwa --samtools-path ${SINGULARITY_ROOTFS}/samtools/samtools --bedtools-path ${SINGULARITY_ROOTFS}/bedtools2/bin/bamToBed "$@"
+
+%test
+    test -f /scripts/align_primers.py

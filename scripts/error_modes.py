@@ -80,8 +80,7 @@ def find_primer_scheme(scheme):
 
 def correct_alignment(sample_sequence,
                       bed_content,
-                      primer_seq,
-                      primer_reversed):
+                      primer_seq):
     """Correct cases where bwa has soft clipped the primer alignment. \
         For now we are assuming there are no INDELs in the primer binding sites"""
     primer_start = int(bed_content[1])
@@ -125,13 +124,11 @@ def align_primers(genomic_sequence,
         alignment_file = os.path.join(temp_dir, row['name'] + '.sam')
         bam_file = os.path.join(temp_dir, row['name'] + '.bam')
         bed_file = os.path.join(temp_dir, row['name'] + '.bed')
+        sai_file = os.path.join(temp_dir, row['name'] + '.sai')
         # aln primer to genomic sequence using bwa, then convert to sam, bam and bed files
-        map_command = 'singularity run singularity/images/BWA.img index ' + genomic_sequence + ' && singularity run singularity/images/BWA.img aln -n 3 '
-        map_command += genomic_sequence + ' ' + primer_fasta + ' > ' + os.path.join(temp_dir, row['name'] + '.sai')
-        map_command += '; singularity run singularity/images/BWA.img samse ' + genomic_sequence
-        map_command += ' ' + os.path.join(temp_dir, row['name'] + '.sai') +  ' ' + primer_fasta
-        map_command += ' > ' + alignment_file + ' && singularity run singularity/images/Samtools.img view -Sb ' + alignment_file + ' > ' + bam_file
-        map_command += ' && singularity run singularity/images/Bedtools.img bamToBed -i ' + bam_file + ' > ' + bed_file
+        map_command = "singularity run singularity/images/Map.img --genomic-sequence " + genomic_sequence
+        map_command += " --primer-fasta " + primer_fasta + " --sai-file " + sai_file + " --alignment-file " + alignment_file
+        map_command += " --bam-file " + bam_file + " --bed-file " + bed_file
         subprocess.run(map_command, shell=True, check=True)
         # open the bed and sam files
         with open(bed_file, 'r') as bedIn:
@@ -143,8 +140,7 @@ def align_primers(genomic_sequence,
             if not mapped.cigar[0][1] == 0:
                 sam_tags, bed_content = correct_alignment(sample_sequence,
                                                           bed_content,
-                                                          mapped.query_sequence,
-                                                          mapped.is_reverse)
+                                                          mapped.query_sequence)
             mismatches = [tag[1] for tag in sam_tags if tag[0] == "NM"][0]
             mismatch_dict = {}
             if not mismatches == 0:
