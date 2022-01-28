@@ -13,11 +13,11 @@ A working pipeline to generate and assemble synthetic SARS-CoV-2 amplicons. Mism
 git clone https://github.com/iqbal-lab-org/viridian_simulations_workflow
 cd viridian_simulations_workflow
 # install the python dependencies in a virtual env
-python -m venv venv
+python3 -m venv venv
 source ./venv/bin/activate
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 # build the containers
-python singularity/build_images.py
+python3 singularity/build_images.py
 ```
 
 # Usage

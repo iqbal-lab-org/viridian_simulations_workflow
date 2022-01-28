@@ -169,7 +169,7 @@ amplicon_sequences
 updated_sequences
 read_output
 concatenated_reads
-viridian_output
+viridian_assemblies
 masked_truth_assemblies
 truth_vcfs
 varifier_statistics

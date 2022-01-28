@@ -204,7 +204,8 @@ def refine_primers(primer_df,
         if both match, then the non-alternative primer is selected"""
     rows_to_drop = []
     for name in range(len(primer_df["name"])-1):
-        if "alt" in primer_df["name"][name+1] and primer_df["start"][name+1] < primer_df["start"][name] + len(primer_df["seq"][name]):
+        if "alt" in primer_df["name"][name+1] and (primer_df["start"][name+1] < primer_df["start"][name] + len(primer_df["seq"][name]) \
+            or primer_df["end"][name+1] - len(primer_df["seq"][name+1]) > primer_df["end"][name]):
             if alignment_stats[primer_df["name"][name]]["mismatches"] <= alignment_stats[primer_df["name"][name + 1]]["mismatches"]:
                 # drop the alternate primer if it is not the best match
                 rows_to_drop.append(name+1)
@@ -213,8 +214,8 @@ def refine_primers(primer_df,
     primer_df = primer_df.drop(rows_to_drop)
     # separate primers into separate dfs of left and right primers
     mask = primer_df['name'].str.contains('LEFT')
-    left_primers = primer_df[mask].reset_index()
-    right_primers = primer_df[~mask].reset_index()
+    left_primers = primer_df[mask].reset_index(drop=True)
+    right_primers = primer_df[~mask].reset_index(drop=True)
     # if alternate primers are included we need to expand the primer dfs so all primers have a mate
     left_primers, right_primers = populate_primer_dfs(left_primers, right_primers)
     if len(left_primers) == len(right_primers):
