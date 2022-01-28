@@ -72,11 +72,11 @@ rule split_amplicons:
         mismatch_coverage_mean=config['split_amplicons']['mismatch_coverage_mean'],
         mismatch_coverage_sd=config['split_amplicons']['mismatch_coverage_sd'],
         threads=config['threads']
-    run:
-        shell("python scripts/error_modes.py --scheme {params.primer_scheme} --input-dir {input} --output-dir {output} --seed {params.seed} \
+    shell:
+        "python scripts/error_modes.py --scheme {params.primer_scheme} --input-dir {input} --output-dir {output} --seed {params.seed} \
             --dropout-prob {params.random_dropout_probability} --dimer-prob {params.primer_dimer_probability} \
             --match-mean {params.match_coverage_mean} --match-sd {params.match_coverage_sd} --mismatch-mean {params.mismatch_coverage_mean} \
-            --mismatch-sd {params.mismatch_coverage_sd} --threads {params.threads}")
+            --mismatch-sd {params.mismatch_coverage_sd} --threads {params.threads}"
 
 rule simulate_reads:
     input:
