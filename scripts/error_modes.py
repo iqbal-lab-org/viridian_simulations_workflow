@@ -46,10 +46,10 @@ def find_primer_scheme(scheme):
             primer_dict["name"].append(split[3])
             primer_dict["seq"].append(split[6])
             if split[4] == "1":
-                pool1_primers.append(primer_dict["seq"])
+                pool1_primers.append(split[6])
                 primer_dict["pool"].append("nCoV-2019_1")
             if split[4] == "2":
-                pool2_primers.append(primer_dict["seq"])
+                pool2_primers.append(split[6])
                 primer_dict["pool"].append("nCoV-2019_2")
         if scheme == "V4":
             return pd.DataFrame(primer_dict), pool1_primers, pool2_primers
@@ -115,21 +115,26 @@ def align_primers(genomic_sequence,
     aligned_starts = []
     aligned_ends = []
     alignment_stats = {}
+    amplicon_dirs = []
+    # make temp dir for the sample
+    temp_dir = tempfile.mkdtemp(dir=output_dir)
     for index, row in primer_df.iterrows():
-        temp_dir = tempfile.mkdtemp(dir=output_dir)
-        primer_fasta = os.path.join(temp_dir, row['name'] + '.fasta')
+        sub_temp_dir = tempfile.mkdtemp(dir=temp_dir)
+        primer_fasta = os.path.join(sub_temp_dir, row['name'] + '.fasta')
         # write each primer sequence to fasta file
         with open(primer_fasta, 'w') as primeSeq:
             primeSeq.write('>' + row['name'] + '\n' + row['seq'])
-        alignment_file = os.path.join(temp_dir, row['name'] + '.sam')
-        bam_file = os.path.join(temp_dir, row['name'] + '.bam')
-        bed_file = os.path.join(temp_dir, row['name'] + '.bed')
-        sai_file = os.path.join(temp_dir, row['name'] + '.sai')
-        # aln primer to genomic sequence using bwa, then convert to sam, bam and bed files
-        map_command = "singularity run singularity/images/Map.img --genomic-sequence " + genomic_sequence
-        map_command += " --primer-fasta " + primer_fasta + " --sai-file " + sai_file + " --alignment-file " + alignment_file
-        map_command += " --bam-file " + bam_file + " --bed-file " + bed_file
-        subprocess.run(map_command, shell=True, check=True)
+        amplicon_dirs.append(os.path.join(sub_temp_dir, row['name']))
+    # write out list of amplicon dirs
+    with open(os.path.join(temp_dir, "amplicons.txt"), "w") as AmpDir:
+        AmpDir.write("\n".join(amplicon_dirs))
+    # parse list of amplicon dirs to reduce singularity overhead
+    map_command = "singularity run singularity/images/Map.img --dirs " + temp_dir + " --genomic-sequence " + genomic_sequence
+    subprocess.run(map_command, shell=True, check=True)
+    # iterate through amplicons to get relevant mapped information
+    for directory in amplicon_dirs:
+        alignment_file = directory + '.sam'
+        bed_file = directory + '.bed'
         # open the bed and sam files
         with open(bed_file, 'r') as bedIn:
             bed_content = bedIn.read().split('\t')
@@ -157,19 +162,19 @@ def align_primers(genomic_sequence,
                             current = absolute_position + current + 1
                         absolute_position += current
                         mismatch_dict[current] = adjacent_char
-            alignment_stats[row['name']] = {"mismatches": mismatches,
-                                            "positions": mismatch_dict}
+            alignment_stats[os.path.basename(directory)] = {"mismatches": mismatches,
+                                                            "positions": mismatch_dict}
         # extract start and end position of aligned primer
         aligned_starts.append(int(bed_content[1]))
         aligned_ends.append(int(bed_content[2]))
-        # remove the temporary directory
-        try:
-            shutil.rmtree(temp_dir)
-        except FileNotFoundError:
-            pass
     # store the mapped stop and start positions
     primer_df['start'] = aligned_starts
     primer_df['end'] = aligned_ends
+    # remove the temp_dir
+    try:
+        shutil.rmtree(temp_dir)
+    except FileNotFoundError:
+        pass
     return primer_df, alignment_stats
 
 def clean_genome(fasta_file):

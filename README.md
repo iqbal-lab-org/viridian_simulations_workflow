@@ -48,6 +48,7 @@ python singularity/build_images.py
 
 ## split_amplicons:
 * ```random_dropout_probability```: Probability of random dropout of amplicons to simulate PCR errors.
+* ```primer_dimer_probability```: Probability of amplicon being replaced by a primer dimer if either primer has a 3 base pair overlap with any other primer in the same PCR pool.
 * ```match_coverage_mean```: Mean coverage for amplicons containing **no mismatches** in the primer-binding region.
 * ```match_coverage_sd```: Standard deviation of coverage for amplicons containing **no mismatches** in the primer-binding region.
 * ```mismatch_coverage_mean```: Mean coverage for amplicons containing **mismatches** in the primer-binding region.

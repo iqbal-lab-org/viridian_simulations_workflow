@@ -1,4 +1,6 @@
 import argparse
+from ctypes import alignment
+import os
 import subprocess
 import sys
 
@@ -11,17 +13,9 @@ def get_options():
                         type=str)
     parser.add_argument("--bedtools-path", dest="bedtools_path", required=True,
                         type=str)
+    parser.add_argument("--dirs", dest="temp_dirs", required=True,
+                        type=str)
     parser.add_argument("--genomic-sequence", dest="genomic_sequence", required=True,
-                        type=str)
-    parser.add_argument("--primer-fasta", dest="primer_fasta", required=True,
-                        type=str)
-    parser.add_argument("--sai-file", dest="sai_file", required=True,
-                        type=str)
-    parser.add_argument("--alignment-file", dest="alignment_file", required=True,
-                        type=str)
-    parser.add_argument("--bam-file", dest="bam_file", required=True,
-                        type=str)
-    parser.add_argument("--bed-file", dest="bed_file", required=True,
                         type=str)
     args = parser.parse_args()
     return args
@@ -29,14 +23,24 @@ def get_options():
 def main():
     # parse commmand line args
     args = get_options()
+    # import list of amplicons
+    with open(os.path.join(args.temp_dirs, "amplicons.txt"), "r") as inDirs:
+        amplicon_dirs = inDirs.read().split("\n")
     # aln primer to genomic sequence using bwa, then convert to sam, bam and bed files
-    map_command = args.bwa_path + ' index ' + args.genomic_sequence + ' && ' + args.bwa_path + ' aln -n 3 '
-    map_command += args.genomic_sequence + ' ' + args.primer_fasta + ' > ' + args.sai_file
-    map_command += '; ' + args.bwa_path + ' samse ' + args.genomic_sequence
-    map_command += ' ' + args.sai_file +  ' ' + args.primer_fasta
-    map_command += ' > ' + args.alignment_file + ' && ' + args.samtools_path + ' view -Sb ' + args.alignment_file + ' > ' + args.bam_file
-    map_command += ' && ' + args.bedtools_path + ' -i ' + args.bam_file + ' > ' + args.bed_file
-    subprocess.run(map_command, shell=True, check=True)
+    for path in amplicon_dirs:
+        primer_fasta = path + ".fasta"
+        sai_file = path + ".sai"
+        alignment_file = path + ".sam"
+        bam_file = path + ".bam"
+        bed_file = path + ".bed"
+        # align primers to simulated sequence and extract mapped information
+        map_command = args.bwa_path + ' index ' + args.genomic_sequence + ' && ' + args.bwa_path + ' aln -n 3 '
+        map_command += args.genomic_sequence + ' ' + primer_fasta + ' > ' + sai_file
+        map_command += '; ' + args.bwa_path + ' samse ' + args.genomic_sequence
+        map_command += ' ' + sai_file +  ' ' + primer_fasta
+        map_command += ' > ' + alignment_file + ' && ' + args.samtools_path + ' view -Sb ' + alignment_file + ' > ' + bam_file
+        map_command += ' && ' + args.bedtools_path + ' -i ' + bam_file + ' > ' + bed_file
+        subprocess.run(map_command, shell=True, check=True)
     sys.exit(0)
 
 if __name__== '__main__':
