@@ -59,3 +59,7 @@ python3 singularity/build_images.py
 
 ## mask_assemblies:
 * ```apply_mask```: Mask low coverage bases in the simulated truth genomes.
+
+# Testing
+
+To test the ```scripts/error_modes.py```, run ```python tests/run_tests.py```
