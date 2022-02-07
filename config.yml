@@ -1,16 +1,17 @@
 threads: 10
 reference_genome: reference_genome.fasta
 divide_genomes: True
-proportion_illumina: 0.90
-primer_scheme: V4.1
+proportion_illumina: 0.50
+primer_scheme: V4
 seed: 2022
+container_directory: singularity
 
 VGsim:
   rate_file: VGsim_params/rate_file.rt
   iterations: 10000000
   pp_population_model_file: VGsim_params/pp_population.pp
   mg_population_model_file: VGsim_params/mg_population.mg
-  sample_size: 10
+  sample_size: 2
 
 phastSim:
   tree_file: newick_output.nwk

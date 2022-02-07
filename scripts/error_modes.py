@@ -110,7 +110,8 @@ def correct_alignment(sample_sequence,
 def align_primers(genomic_sequence,
                   primer_df,
                   sample_sequence,
-                  output_dir):
+                  output_dir,
+                  container_dir):
     """Align primers to genome using BWA and return start and end positions"""
     aligned_starts = []
     aligned_ends = []
@@ -129,7 +130,7 @@ def align_primers(genomic_sequence,
     with open(os.path.join(temp_dir, "amplicons.txt"), "w") as AmpDir:
         AmpDir.write("\n".join(amplicon_dirs))
     # parse list of amplicon dirs to reduce singularity overhead
-    map_command = "singularity run singularity/images/Map.img --dirs " + temp_dir + " --genomic-sequence " + genomic_sequence
+    map_command = "singularity run " + container_dir +"/images/Map.img --dirs " + temp_dir + " --genomic-sequence " + genomic_sequence
     subprocess.run(map_command, shell=True, check=True)
     # iterate through amplicons to get relevant mapped information
     for directory in amplicon_dirs:
@@ -268,7 +269,8 @@ def extract_amplicons(primer_df,
                       pool1_primers,
                       pool2_primers,
                       seed,
-                      output_dir):
+                      output_dir,
+                      container_dir):
     """Identify best matching primer pairs and extract the amplicon sequence"""
     # set the seed
     np.random.seed(seed)
@@ -278,7 +280,8 @@ def extract_amplicons(primer_df,
     aligned_primers, alignment_stats = align_primers(sequence_file,
                                                      primer_df,
                                                      sample_sequence,
-                                                     output_dir)
+                                                     output_dir,
+                                                     container_dir)
     # refine primers to the best hits
     left_primers, right_primers = refine_primers(aligned_primers,
                                                  alignment_stats)
@@ -394,6 +397,9 @@ def get_options():
     parser.add_argument("--output-dir", dest="output_dir", required=True,
                         help="name of output directory",
                         type=str)
+    parser.add_argument("--container-dir", dest="container_dir", required=True,
+                        help="name of directory of singularity containers",
+                        type=str)
     parser.add_argument("--seed", dest="seed", required=True,
                         help="seed for simulations",
                         type=int)
@@ -450,7 +456,8 @@ def main():
                                                                                                       pool1_primers,
                                                                                                       pool2_primers,
                                                                                                       args.seed,
-                                                                                                      args.output_dir) for genomic_sequence in subset)
+                                                                                                      args.output_dir,
+                                                                                                      args.container_dir) for genomic_sequence in subset)
         for elem in amplicon_results:
             for sample in elem:
                 sample_coverages[sample] = elem[sample][0]

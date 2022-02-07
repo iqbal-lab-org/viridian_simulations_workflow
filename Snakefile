@@ -25,9 +25,10 @@ rule VGsim_tree:
     params:
         seed=config['seed'],
         iterations=config['VGsim']['iterations'],
-        sample_size=config['VGsim']['sample_size']
+        sample_size=config['VGsim']['sample_size'],
+        container_dir=config["container_directory"]
     shell:
-        'singularity run singularity/images/VGsim.img {input.rate_file} -it {params.iterations} -pm {input.pp_population_model_file} \
+        'singularity run {params.container_dir}/images/VGsim.img {input.rate_file} -it {params.iterations} -pm {input.pp_population_model_file} \
                 {input.mg_population_model_file} -seed {params.seed} -nwk --sampleSize {params.sample_size}'
 
 rule phastSim_evolution:
@@ -37,9 +38,10 @@ rule phastSim_evolution:
     output:
         directory(config['phastSim']['output_dir'])
     params:
-        seed=config['seed']
+        seed=config['seed'],
+        container_dir=config["container_directory"]
     shell:
-        'mkdir {output} && singularity run singularity/images/phastSim.img --outpath {output}/ --seed {params.seed} --createFasta \
+        'mkdir {output} && singularity run {params.container_dir}/images/phastSim.img --outpath {output}/ --seed {params.seed} --createFasta \
                 --createInfo --createNewick --createPhylip --treeFile {input.tree_file} \
                 --invariable 0.1 --alpha 0.0002 --omegaAlpha 0.0002 --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 --codon \
                 --reference {input.reference_genome}'
@@ -73,12 +75,14 @@ rule split_amplicons:
         match_coverage_sd=config['split_amplicons']['match_coverage_sd'],
         mismatch_coverage_mean=config['split_amplicons']['mismatch_coverage_mean'],
         mismatch_coverage_sd=config['split_amplicons']['mismatch_coverage_sd'],
-        threads=config['threads']
+        container_dir=config["container_directory"]
+    threads:
+        config['threads']
     shell:
-        "python scripts/error_modes.py --scheme {params.primer_scheme} --input-dir {input.split_sequences} --output-dir {output} --phastsim-dir {input.phastSim_dir} \
+        "python scripts/error_modes.py --scheme {params.primer_scheme} --input-dir {input.split_sequences} --output-dir {output} --container-dir {params.container_dir} \
             --seed {params.seed} --dropout-prob {params.random_dropout_probability} --dimer-prob {params.primer_dimer_probability} \
             --match-mean {params.match_coverage_mean} --match-sd {params.match_coverage_sd} --mismatch-mean {params.mismatch_coverage_mean} \
-            --mismatch-sd {params.mismatch_coverage_sd} --threads {params.threads}"
+            --mismatch-sd {params.mismatch_coverage_sd} --threads {threads}"
 
 rule simulate_reads:
     input:
@@ -86,16 +90,19 @@ rule simulate_reads:
     output:
         directory('read_output')
     params:
-        threads=config['threads'],
         divide_genomes=config["divide_genomes"],
         prop_illumina=config['proportion_illumina'],
         read_length=config["simulate_reads"]["illumina_read_length"],
-        seed=config["seed"]
+        seed=config["seed"],
+        container_dir=config["container_directory"]
+    threads:
+        config['threads']
     run:
         def simulate_ART_reads(genome,
                                output,
                                sample_coverages,
-                               read_length):
+                               read_length,
+                               container_dir):
             """Function to run ART on amplicon sequences per simulated genomic sequence"""
             sample_name = os.path.basename(genome[:-1])
             output_dir = os.path.join(output, sample_name)
@@ -105,13 +112,14 @@ rule simulate_reads:
                 coverage = sample_coverages[sample_name][amplicon]
                 amplicon_file = os.path.join(genome, amplicon + '.fasta')
                 read_file = os.path.join(output_dir, amplicon)
-                subprocess_command = 'singularity run singularity/images/ART.img --quiet -amp -p -sam -na -i ' + amplicon_file + \
+                subprocess_command = 'singularity run ' + container_dir +'/images/ART.img --quiet -amp -p -sam -na -i ' + amplicon_file + \
                         ' -l ' + read_length + ' -f ' + str(coverage) + ' -o ' + read_file
                 subprocess.run(subprocess_command, shell=True, check=True)
 
         def simulate_badreads(genome,
                               output,
-                              sample_coverages):
+                              sample_coverages,
+                              container_dir):
             sample_name = os.path.basename(genome[:-1])
             output_dir = os.path.join(output, sample_name)
             if not os.path.exists(output_dir):
@@ -120,7 +128,7 @@ rule simulate_reads:
                 coverage = sample_coverages[sample_name][amplicon]
                 amplicon_file = os.path.join(genome, amplicon + '.fasta')
                 read_file = os.path.join(output_dir, amplicon) + '.fastq.gz'
-                subprocess_command = 'singularity run singularity/images/Badread.img simulate --reference ' + amplicon_file + ' --quantity ' + str(coverage) + 'x \
+                subprocess_command = 'singularity run ' + container_dir + '/images/Badread.img simulate --reference ' + amplicon_file + ' --quantity ' + str(coverage) + 'x \
                 |         gzip > ' + read_file
                 subprocess.run(subprocess_command, shell=True, check=True)
             return
@@ -148,21 +156,23 @@ rule simulate_reads:
             nanopore_samples = samples
         # parallelise ART
         illumina_list = [
-            illumina_samples[i:i + params.threads] for i in range(0, len(illumina_samples), params.threads)
+            illumina_samples[i:i + threads] for i in range(0, len(illumina_samples), threads)
         ]
         for illumina_subset in tqdm(illumina_list):
-            Parallel(n_jobs=params.threads, prefer="threads")(delayed(simulate_ART_reads)(genome,
-                                                                                            art_output,
-                                                                                            sample_coverages,
-                                                                                            str(params.read_length)) for genome in illumina_subset)
+            Parallel(n_jobs=threads, prefer="threads")(delayed(simulate_ART_reads)(genome,
+                                                                                    art_output,
+                                                                                    sample_coverages,
+                                                                                    str(params.read_length),
+                                                                                    params.container_dir) for genome in illumina_subset)
         # parallelise Badread
         nanopore_list = [
-            nanopore_samples[i:i + params.threads] for i in range(0, len(nanopore_samples), params.threads)
+            nanopore_samples[i:i + threads] for i in range(0, len(nanopore_samples), threads)
         ]
         for nanopore_subset in tqdm(nanopore_list):
-            Parallel(n_jobs=params.threads, prefer="threads")(delayed(simulate_badreads)(genome,
-                                                                                           badread_output,
-                                                                                           sample_coverages) for genome in nanopore_subset)
+            Parallel(n_jobs=threads, prefer="threads")(delayed(simulate_badreads)(genome,
+                                                                                    badread_output,
+                                                                                    sample_coverages,
+                                                                                    params.container_dir) for genome in nanopore_subset)
 
 rule cat_reads:
     input:
@@ -211,32 +221,38 @@ rule run_viridian:
     output:
         directory('viridian_assemblies')
     params:
-        threads=config['threads']
+        container_dir=config["container_directory"]
+    threads:
+        config['threads']
     run:
         def illumina_viridian_workflow(reference_genome,
                                        sample,
-                                       output):
+                                       output,
+                                       container_dir):
             """Function to run viridian on ART read sets"""
             fw_read = sample
             rv_read = sample.replace('_1', '_2')
             output_dir = os.path.join(output, os.path.basename(sample).replace('_1.fq', ''))
-            viridian_command = "singularity run viridian_workflow/viridian_workflow.img run_one_sample \
+            viridian_command = "singularity run " + container_dir + "/viridian_workflow/viridian_workflow.img run_one_sample \
                     --tech illumina \
                     --ref_fasta " + reference_genome + " \
                     --reads1 " + fw_read +" \
+                    --keep_bam \
                     --reads2 " + rv_read + " \
                     --outdir " + output_dir + "/"
             subprocess.run(viridian_command, shell=True, check=True)
 
         def nanopore_viridian_workflow(reference_genome,
                                        sample,
-                                       output):
+                                       output,
+                                       container_dir):
             """Function to run viridian on Badread read sets"""
             output_dir = os.path.join(output, os.path.basename(sample).replace('.fq', ''))
-            viridian_command = "singularity run viridian_workflow/viridian_workflow.img run_one_sample \
+            viridian_command = "singularity run " + container_dir + "/viridian_workflow/viridian_workflow.img run_one_sample \
                     --tech ont \
                     --ref_fasta " + reference_genome + " \
                     --reads " + sample + " \
+                    --keep_bam \
                     --outdir " + output_dir + "/"
             subprocess.run(viridian_command, shell=True, check=True)
 
@@ -249,20 +265,22 @@ rule run_viridian:
                 os.mkdir(directory)
         # parallelise assembly of ART reads
         art_list = [
-            art_samples[i:i + params.threads] for i in range(0, len(art_samples), params.threads)
+            art_samples[i:i + threads] for i in range(0, len(art_samples), threads)
         ]
         for art_set in art_list:
-            Parallel(n_jobs=params.threads, prefer="threads")(delayed(illumina_viridian_workflow)(input[1],
-                                                                                                    sample,
-                                                                                                    os.path.join(output[0], "ART_assemblies")) for sample in art_set)
+            Parallel(n_jobs=threads, prefer="threads")(delayed(illumina_viridian_workflow)(input[1],
+                                                                                                  sample,
+                                                                                                  os.path.join(output[0], "ART_assemblies"),
+                                                                                                  params.container_dir) for sample in art_set)
         # parallelise assembly of Badread reads
         badread_list = [
-            badread_samples[i:i + params.threads] for i in range(0, len(badread_samples), params.threads)
+            badread_samples[i:i + threads] for i in range(0, len(badread_samples), threads)
         ]
         for bad_set in badread_list:
-            Parallel(n_jobs=params.threads, prefer="threads")(delayed(nanopore_viridian_workflow)(input[1],
-                                                                                                    sample,
-                                                                                                    os.path.join(output[0], "Badread_assemblies")) for sample in bad_set)
+            Parallel(n_jobs=threads, prefer="threads")(delayed(nanopore_viridian_workflow)(input[1],
+                                                                                                  sample,
+                                                                                                  os.path.join(output[0], "Badread_assemblies"),
+                                                                                                  params.container_dir) for sample in bad_set)
 
 rule mask_assemblies:
     input:
@@ -313,17 +331,20 @@ rule truth_vcfs:
     output:
         directory("truth_vcfs")
     params:
-        threads=config["threads"]
+        container_dir=config["container_directory"]
+    threads:
+        config['threads']
     run:
         def run_varifier(assembly,
                          covered,
                          reference,
-                         output_dir):
+                         output_dir,
+                         container_dir):
             """Run varifier make_truth_vcf on the masked assemblies"""
             covered_start = covered["start"]
             covered_end = covered["end"]
-            #varifier_command = "singularity run varifier/varifier.img make_truth_vcf --global_align "
-            varifier_command = 'singularity exec "docker://quay.io/iqballab/varifier" varifier make_truth_vcf --global_align '
+            varifier_command = "singularity run " + container_dir + "/varifier/varifier.img make_truth_vcf --global_align "
+            #varifier_command = 'singularity exec "docker://quay.io/iqballab/varifier" varifier make_truth_vcf --global_align '
             varifier_command += "--global_align_min_coord " + covered_start + " --global_align_max_coord " + covered_end
             varifier_command += " " + assembly + " " + reference + " " + output_dir
             subprocess.run(varifier_command, shell=True, check=True)
@@ -343,13 +364,14 @@ rule truth_vcfs:
                                        "end": str(amplicon_stats[sample][amplicons[len(amplicons)-1]]["amplicon_end"])}
         # parallelise make_truth_vcf
         subsetted_assemblies = [
-            assemblies[i:i + params.threads] for i in range(0, len(assemblies), params.threads)
+            assemblies[i:i + threads] for i in range(0, len(assemblies), threads)
         ]
         for subset in subsetted_assemblies:
-            Parallel(n_jobs=params.threads, prefer="threads")(delayed(run_varifier)(sample,
+            Parallel(n_jobs=threads, prefer="threads")(delayed(run_varifier)(sample,
                                                                                     regions_covered[os.path.basename(sample).replace(".fasta", "")],
                                                                                     input[1],
-                                                                                    os.path.join(output[0], os.path.basename(sample).replace(".fasta", ""))) for sample in subset)
+                                                                                    os.path.join(output[0], os.path.basename(sample).replace(".fasta", "")),
+                                                                                    params.container_dir) for sample in subset)
 
 rule assess_assemblies:
     input:
@@ -358,6 +380,8 @@ rule assess_assemblies:
         reference_genome=config["reference_genome"],
         truth_vcf=rules.truth_vcfs.output,
         split_amplicons=rules.split_amplicons.output
+    params:
+        container_dir=config["container_directory"]
     output:
         directory('varifier_statistics')
     run:
@@ -379,13 +403,13 @@ rule assess_assemblies:
         snp_positions = []
         snp_called = []
         # iterate through assemblies and run varifier
-        for assem in art_assemblies:# + badread_assemblies:
+        for assem in art_assemblies + badread_assemblies:
             vcf_file = os.path.join(assem, "variants.vcf")
             truth_vcf = os.path.join(input[3], os.path.basename(assem), "04.truth.vcf")
             truth_genome = os.path.join(input[1], os.path.basename(assem) + ".fasta")
             output_dir = os.path.join(output[0], os.path.join(assem.split("/")[-2], os.path.basename(assem)))
-            #varifier_command = "singularity run varifier/varifier.img vcf_eval --truth_vcf " + truth_vcf + " "
-            varifier_command = 'singularity exec "docker://quay.io/iqballab/varifier" varifier vcf_eval --truth_vcf ' + truth_vcf + ' '
+            varifier_command = "singularity run " + params.container_dir + "/varifier/varifier.img vcf_eval --truth_vcf " + truth_vcf + " "
+           # varifier_command = 'singularity exec "docker://quay.io/iqballab/varifier" varifier vcf_eval --truth_vcf ' + truth_vcf + ' '
             varifier_command += truth_genome + " " + input[2] + " " + vcf_file + " " + output_dir
             shell(varifier_command)
             # import vcf file
@@ -408,7 +432,6 @@ rule assess_assemblies:
                         dropouts.append((sample_stats[amplicon]["amplicon_start"], sample_stats[amplicon]["amplicon_end"]))
                     if sample_stats[amplicon]["errors"][0] == "primer_SNP":
                         reduced_coverage.append((sample_stats[amplicon]["amplicon_start"], sample_stats[amplicon]["amplicon_end"]))
-        print(snp_positions, snp_called, dimers)
 
 rule clean_outputs:
     input:
