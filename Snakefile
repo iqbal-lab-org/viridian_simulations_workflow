@@ -1,6 +1,8 @@
 import glob
 import gzip
 from joblib import Parallel, delayed
+import json
+import matplotlib.pyplot as plt
 import os
 import pickle
 import pysam
@@ -9,7 +11,7 @@ import shutil
 import subprocess
 from tqdm import tqdm
 
-from scripts.error_modes import clean_genome
+from scripts.error_modes import clean_genome, find_primer_scheme
 
 configfile: 'config.yml'
 
@@ -269,18 +271,18 @@ rule run_viridian:
         ]
         for art_set in art_list:
             Parallel(n_jobs=threads, prefer="threads")(delayed(illumina_viridian_workflow)(input[1],
-                                                                                                  sample,
-                                                                                                  os.path.join(output[0], "ART_assemblies"),
-                                                                                                  params.container_dir) for sample in art_set)
+                                                                                           sample,
+                                                                                           os.path.join(output[0], "ART_assemblies"),
+                                                                                           params.container_dir) for sample in art_set)
         # parallelise assembly of Badread reads
         badread_list = [
             badread_samples[i:i + threads] for i in range(0, len(badread_samples), threads)
         ]
         for bad_set in badread_list:
             Parallel(n_jobs=threads, prefer="threads")(delayed(nanopore_viridian_workflow)(input[1],
-                                                                                                  sample,
-                                                                                                  os.path.join(output[0], "Badread_assemblies"),
-                                                                                                  params.container_dir) for sample in bad_set)
+                                                                                           sample,
+                                                                                           os.path.join(output[0], "Badread_assemblies"),
+                                                                                           params.container_dir) for sample in bad_set)
 
 rule mask_assemblies:
     input:
@@ -304,7 +306,7 @@ rule mask_assemblies:
             # iterate through samples and check if amplicons have low coverage, if so then mask their sequence
             for sample in amplicon_stats:
                 sample_stats = amplicon_stats[sample]
-                all_amplicons = list(sample_stats.keys())[:-1]
+                all_amplicons = list(sample_stats.keys())
                 # import the simulated squence
                 filename = str(sample) + ".fasta"
                 sample_name, sample_sequence = clean_genome(os.path.join(input[0], filename))
@@ -315,8 +317,13 @@ rule mask_assemblies:
                         or "random_dropout" in sample_stats[all_amplicons[amplicon]]["errors"] \
                         or "primer_dimer" in sample_stats[all_amplicons[amplicon]]["errors"]:
                         # we are masking regions with low coverage that are not covered by the adjacent amplicons
-                        mask_start = sample_stats[all_amplicons[amplicon-1]]["right_primer_start"]
+                        if not amplicon == 0:
+                            mask_start = sample_stats[all_amplicons[amplicon-1]]["right_primer_start"]
+                         #  mask_start = sample_stats[all_amplicons[amplicon]]["amplicon_start"]
+                        else:
+                            mask_start = sample_stats[all_amplicons[amplicon]]["amplicon_start"]
                         mask_end = sample_stats[all_amplicons[amplicon+1]]["left_primer_end"]
+                        #mask_end = sample_stats[all_amplicons[amplicon]]["amplicon_end"]
                         # replace the masked sequence with Ns
                         sample_sequence[mask_start:mask_end] = list("N"*(mask_end-mask_start))
                 # write out the masked simulated sequence
@@ -359,7 +366,7 @@ rule truth_vcfs:
             amplicon_stats = pickle.load(statIn)
         regions_covered = {}
         for sample in amplicon_stats:
-            amplicons = list(amplicon_stats[sample].keys())[:-1]
+            amplicons = list(amplicon_stats[sample].keys())
             regions_covered[sample] = {"start": str(amplicon_stats[sample][amplicons[0]]["amplicon_start"]),
                                        "end": str(amplicon_stats[sample][amplicons[len(amplicons)-1]]["amplicon_end"])}
         # parallelise make_truth_vcf
@@ -381,10 +388,130 @@ rule assess_assemblies:
         truth_vcf=rules.truth_vcfs.output,
         split_amplicons=rules.split_amplicons.output
     params:
-        container_dir=config["container_directory"]
+        container_dir=config["container_directory"],
+        scheme=config['primer_scheme']
     output:
         directory('varifier_statistics')
     run:
+        
+        def generate_plots(assembly_list,
+                           truth_vcf_dir,
+                           reference_genome,
+                           simulated_genomes,
+                           source):
+            """Generate summary plots for the viridian assemblies"""
+            # store snp positions and whether it was correctly identifed
+            snp_positions = []
+            snp_percentage = []
+            snp_called = []
+            # colour based on error mode
+            colours = []
+            neighbour_colours = []
+            for assembly in assembly_list:
+                vcf_file = os.path.join(assembly, "variants.vcf")
+                truth_vcf = os.path.join(truth_vcf_dir, os.path.basename(assembly), "04.truth.vcf")
+                truth_genome = os.path.join(simulated_genomes, os.path.basename(assembly) + ".fasta")
+                output_dir = os.path.join(output[0], os.path.join(assembly.split("/")[-2], os.path.basename(assembly)))
+                varifier_command = "singularity run " + params.container_dir + "/varifier/varifier.img vcf_eval --truth_vcf " + truth_vcf + " "
+                # varifier_command = 'singularity exec "docker://quay.io/iqballab/varifier" varifier vcf_eval --truth_vcf ' + truth_vcf + ' '
+                varifier_command += truth_genome + " " + reference_genome + " " + vcf_file + " " + output_dir
+                shell(varifier_command)
+                # import truth vcf
+                truth_vcf_in = pysam.VariantFile(os.path.join(output_dir, "recall", "recall.vcf"))
+                truth_records = truth_vcf_in.fetch()
+                truth_positions = []
+                for record in truth_records:
+                    truth_positions.append(int(record.pos))
+                # import varified vcf
+                varifier_vcf_in = pysam.VariantFile(os.path.join(output_dir, "variants_to_eval.filtered.vcf"))
+                varifier_records = varifier_vcf_in.fetch()
+                varified_positions = []
+                for record in varifier_records:
+                    varified_positions.append(int(record.pos))
+                # store amplicon regions for each error mode
+                error = []
+                # extract samples error modes
+                sample_stats = amplicon_stats[os.path.basename(assembly)]
+                amplicon_region = []
+                # import viridian summary stats to make amplicon starts and ends relative to the reference sequence
+                with open(os.path.join(assembly, "log.json")) as inJson:
+                    summary = json.loads(inJson.read())["read_sampling"]
+                for amplicon in list(sample_stats.keys()):
+                    # make amplicon start and ends relative to ref
+                    amplicon_region.append((summary[amplicon.split("_LEFT")[0]]["start"]-1, summary[amplicon.split("_LEFT")[0]]["end"]))
+                    #amplicon_region.append((sample_stats[amplicon]["amplicon_start"], sample_stats[amplicon]["amplicon_end"]))
+                    if sample_stats[amplicon]["has_error"]:
+                        error.append(sample_stats[amplicon]["errors"][0])
+                    else:
+                        error.append(False)
+                # see which varified SNPs are missing
+                for position in truth_positions:
+                    # make position relative to the length of the amplicon
+                    for region in range(len(amplicon_region)):
+                        if position <= amplicon_region[region][1] and position >= amplicon_region[region][0]:
+                            snp_percentage.append((position - amplicon_region[region][0])*100/(amplicon_region[region][1]-amplicon_region[region][0]))
+                            snp_positions.append(position)
+                            if position in varified_positions:
+                                snp_called.append(1)
+                            else:
+                                snp_called.append(0)
+                            error_mode = error[region]
+                            if error_mode == "primer_dimer":
+                                colours.append("g")
+                                neighbour_colours.append("g")
+                            elif error_mode == "primer_SNP":
+                                colours.append("r")
+                                neighbour_colours.append("r")
+                            elif error_mode == "primer_reversion":
+                                colours.append("b")
+                                neighbour_colours.append("b")
+                            elif error_mode == "random_dropout":
+                                colours.append("purple")
+                                neighbour_colours.append("purple")
+                            else:
+                                if not error[region + 1] and not error[region-1]:
+                                    colours.append("black")
+                                    neighbour_colours.append("black")
+                                else:
+                                    if error[region + 1] == "primer_dimer" or error[region-1] == "primer_dimer":
+                                        neighbour_colours.append("pink")
+                                        colours.append("black")
+                                    elif error[region + 1] == "primer_SNP" or error[region-1] == "primer_SNP":
+                                        neighbour_colours.append("yellow")
+                                        colours.append("black")
+                                    elif error[region + 1] == "primer_reversion" or error[region-1] == "primer_reversion":
+                                        neighbour_colours.append("orange")
+                                        colours.append("black")
+                                    else:
+                                        neighbour_colours.append("gray")
+                                        colours.append("black")
+            # generate plots
+            plt.style.use('seaborn-whitegrid')
+            fig = plt.figure()
+            ax = fig.add_subplot()
+            for i in tqdm(range(len(snp_percentage))):
+                ax.scatter(snp_percentage[i], snp_called[i], s=10, color=colours[i])
+            plt.savefig(os.path.join(output[0], source + "_SNP_percentages.pdf"))
+            plt.style.use('seaborn-whitegrid')
+            fig = plt.figure()
+            ax = fig.add_subplot()
+            for i in tqdm(range(len(snp_positions))):
+                ax.scatter(snp_positions[i], snp_called[i], s=10, color=colours[i])
+            plt.savefig(os.path.join(output[0], source + "_SNP_positions.pdf"))
+            # colour points based on neighbours
+            plt.style.use('seaborn-whitegrid')
+            fig = plt.figure()
+            ax = fig.add_subplot()
+            for i in tqdm(range(len(snp_percentage))):
+                ax.scatter(snp_percentage[i], snp_called[i], s=10, color=neighbour_colours[i])
+            plt.savefig(os.path.join(output[0], source + "_SNP_percentages_neighbours.pdf"))
+            plt.style.use('seaborn-whitegrid')
+            fig = plt.figure()
+            ax = fig.add_subplot()
+            for i in tqdm(range(len(snp_positions))):
+                ax.scatter(snp_positions[i], snp_called[i], s=10, color=neighbour_colours[i])
+            plt.savefig(os.path.join(output[0], source + "_SNP_positions_neighbours.pdf"))
+
         directories = [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]
         if not os.path.exists(output[0]):
             for folder in directories:
@@ -394,45 +521,18 @@ rule assess_assemblies:
         # import amplicon statistics
         with open(os.path.join(input[4], 'amplicon_statistics.pickle'), 'rb') as statIn:
             amplicon_stats = pickle.load(statIn)
-        # store amplicon regions for each error mode
-        dimers = []
-        reversions = []
-        dropouts = []
-        reduced_coverage = []
-        # store snp positions and whether it was correctly identifed
-        snp_positions = []
-        snp_called = []
-        # iterate through assemblies and run varifier
-        for assem in art_assemblies + badread_assemblies:
-            vcf_file = os.path.join(assem, "variants.vcf")
-            truth_vcf = os.path.join(input[3], os.path.basename(assem), "04.truth.vcf")
-            truth_genome = os.path.join(input[1], os.path.basename(assem) + ".fasta")
-            output_dir = os.path.join(output[0], os.path.join(assem.split("/")[-2], os.path.basename(assem)))
-            varifier_command = "singularity run " + params.container_dir + "/varifier/varifier.img vcf_eval --truth_vcf " + truth_vcf + " "
-           # varifier_command = 'singularity exec "docker://quay.io/iqballab/varifier" varifier vcf_eval --truth_vcf ' + truth_vcf + ' '
-            varifier_command += truth_genome + " " + input[2] + " " + vcf_file + " " + output_dir
-            shell(varifier_command)
-            # import vcf file
-            vcf_in = pysam.VariantFile(truth_vcf)
-            records = vcf_in.fetch()
-            pos = []
-            for record in records:
-                pos.append(int(record.pos))
-
-               # print(assem, record.ref, record.alts, record.pos)
-            # extract samples error modes
-            sample_stats = amplicon_stats[os.path.basename(assem)]
-            for amplicon in list(sample_stats.keys())[:-1]:
-                if sample_stats[amplicon]["has_error"]:
-                    if sample_stats[amplicon]["errors"][0] == "primer_dimer":
-                        dimers.append((sample_stats[amplicon]["amplicon_start"], sample_stats[amplicon]["amplicon_end"]))
-                    if sample_stats[amplicon]["errors"][0] == "primer_reversion":
-                        reversions.append((sample_stats[amplicon]["amplicon_start"], sample_stats[amplicon]["amplicon_end"]))
-                    if sample_stats[amplicon]["errors"][0] == "random_dropout":
-                        dropouts.append((sample_stats[amplicon]["amplicon_start"], sample_stats[amplicon]["amplicon_end"]))
-                    if sample_stats[amplicon]["errors"][0] == "primer_SNP":
-                        reduced_coverage.append((sample_stats[amplicon]["amplicon_start"], sample_stats[amplicon]["amplicon_end"]))
-
+        # iterate through assemblies, run varifier and generate plots 
+        generate_plots(art_assemblies,
+                       input[3],
+                       input[2],
+                       input[1],
+                       "ART")
+        generate_plots(badread_assemblies,
+                       input[3],
+                       input[2],
+                       input[1],
+                       "Badread")
+           
 rule clean_outputs:
     input:
         VGsim_output=rules.VGsim_tree.output,

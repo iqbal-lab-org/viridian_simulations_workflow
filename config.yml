@@ -1,7 +1,7 @@
 threads: 10
 reference_genome: reference_genome.fasta
 divide_genomes: True
-proportion_illumina: 0.50
+proportion_illumina: 0.99
 primer_scheme: V4
 seed: 2022
 container_directory: singularity
