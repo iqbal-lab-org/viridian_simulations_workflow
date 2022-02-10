@@ -460,49 +460,52 @@ rule assess_assemblies:
                         error.append(sample_stats[amplicon]["errors"][0])
                     else:
                         error.append(False)
+                regions_seen = []
                 # see which varified SNPs are missing
                 for position in truth_positions:
                     # make position relative to the length of the amplicon
                     for region in range(len(amplicon_region)):
-                        if position <= amplicon_region[region][1] and position >= amplicon_region[region][0]:
-                            # want to look at position calls across all samples
-                            # intiate plot dictionary
-                            error_mode = error[region]
-                            if not error_mode:
-                                if error[region + 1] == "primer_dimer" or error[region-1] == "primer_dimer":
-                                    error_mode = "neighbour_primer_dimer"
-                                elif error[region + 1] == "primer_SNP" or error[region-1] == "primer_SNP":
-                                    error_mode = "neighbour_primer_SNP"
-                                elif error[region + 1] == "primer_reversion" or error[region-1] == "primer_reversion":
-                                    error_mode = "neighbour_primer_reversion"
-                                elif error[region + 1] == "random_dropout" or error[region-1] == "random_dropout":
-                                    error_mode = "neighbour_random_dropout"
-                                else:
-                                    error_mode = "no_error"
-                            if not error_mode in plot_dict:
-                                plot_dict[error_mode] = {}
-                                plot_dict[error_mode]["positions"] = {}
-                            if not position in plot_dict[error_mode]["positions"]:
-                                plot_dict[error_mode]["positions"][position] = {"calls": []}
-                            # want to make plots of calls across the amplicon lengths too
-                            percentage = round((position - amplicon_region[region][0])*100/(amplicon_region[region][1]-amplicon_region[region][0]), 2)
-                            if not error_mode in percentage_dict:
-                                percentage_dict[error_mode] = {}
-                                percentage_dict[error_mode]["positions"] = {}
-                            if not percentage in percentage_dict[error_mode]["positions"]:
-                                percentage_dict[error_mode]["positions"][percentage] = {"calls": []}
-                            if position in varified_positions:
-                                plot_dict[error_mode]["positions"][position]["calls"].append(1)
-                                percentage_dict[error_mode]["positions"][percentage]["calls"].append(1)
+                        error_mode = error[region]
+                        if not error_mode:
+                            if error[region + 1] == "primer_dimer" or error[region-1] == "primer_dimer":
+                                error_mode = "neighbour_primer_dimer"
+                            elif error[region + 1] == "primer_SNP" or error[region-1] == "primer_SNP":
+                                error_mode = "neighbour_primer_SNP"
+                            elif error[region + 1] == "primer_reversion" or error[region-1] == "primer_reversion":
+                                error_mode = "neighbour_primer_reversion"
+                            elif error[region + 1] == "random_dropout" or error[region-1] == "random_dropout":
+                                error_mode = "neighbour_random_dropout"
                             else:
-                                plot_dict[error_mode]["positions"][position]["calls"].append(0)
-                                percentage_dict[error_mode]["positions"][percentage]["calls"].append(0)
+                                error_mode = "no_error"
+                        if not (position, error_mode) in regions_seen:
+                            if position <= amplicon_region[region][1] and position >= amplicon_region[region][0]:
+                                # want to look at position calls across all samples
+                                # intiate plot dictionary
+                                if not error_mode in plot_dict:
+                                    plot_dict[error_mode] = {}
+                                    plot_dict[error_mode]["positions"] = {}
+                                if not position in plot_dict[error_mode]["positions"]:
+                                    plot_dict[error_mode]["positions"][position] = {"calls": []}
+                                # want to make plots of calls across the amplicon lengths too
+                                percentage = round((position - amplicon_region[region][0])*100/(amplicon_region[region][1]-amplicon_region[region][0]), 2)
+                                if not error_mode in percentage_dict:
+                                    percentage_dict[error_mode] = {}
+                                    percentage_dict[error_mode]["positions"] = {}
+                                if not percentage in percentage_dict[error_mode]["positions"]:
+                                    percentage_dict[error_mode]["positions"][percentage] = {"calls": []}
+                                if position in varified_positions:
+                                    plot_dict[error_mode]["positions"][position]["calls"].append(1)
+                                    percentage_dict[error_mode]["positions"][percentage]["calls"].append(1)
+                                else:
+                                    plot_dict[error_mode]["positions"][position]["calls"].append(0)
+                                    percentage_dict[error_mode]["positions"][percentage]["calls"].append(0)
+                                regions_seen.append((position, error_mode))
             # add colours to the plot dict
             for to_plot in [plot_dict, percentage_dict]:
                 if "primer_dimer" in to_plot:
                     to_plot["primer_dimer"]["colour"] = "g"
                 if "primer_SNP" in to_plot:  
-                    to_plot["primer_SNP"]["colour"] = "r"
+                    to_plot["primer_SNP"]["colour"] = "red"
                 if "primer_reversion" in to_plot:
                     to_plot["primer_reversion"]["colour"] = "b"
                 if "random_dropout" in to_plot:
@@ -512,7 +515,7 @@ rule assess_assemblies:
                 if "neighbour_primer_dimer" in to_plot:
                     to_plot["neighbour_primer_dimer"]["colour"] = "lime"
                 if "neighbour_primer_SNP" in to_plot:  
-                    to_plot["neighbour_primer_SNP"]["colour"] = "pink"
+                    to_plot["neighbour_primer_SNP"]["colour"] = "magenta"
                 if "neighbour_primer_reversion" in to_plot:
                     to_plot["neighbour_primer_reversion"]["colour"] = "cyan"
                 if "neighbour_random_dropout" in to_plot:
@@ -522,33 +525,46 @@ rule assess_assemblies:
             for error in tqdm(plot_dict):
                 positions = []
                 calls = []
+                frequencies = []
                 fig = plt.figure()
                 ax = fig.add_subplot()
                 for site in plot_dict[error]["positions"]:
                     positions.append(str(site))
                     calls.append(mean(plot_dict[error]["positions"][site]["calls"]))
+                    frequencies.append(-len(plot_dict[error]["positions"][site]["calls"])/len(assembly_list))
                 ordered_positions = positions
                 ordered_positions.sort(key=int)
                 ordered_positions = [str(x) for x in positions]
                 ordered_calls = [calls[positions.index(i)] for i in ordered_positions]
                 ax.bar(ordered_positions, ordered_calls, color=plot_dict[error]["colour"])
-                ax.set_xticklabels(positions, rotation=90, ha='right')
-                ax.tick_params(axis='x', which='major', labelsize=5) 
+                # we also are adding the frequency of SNPs at each position below the bars
+                ax.bar(ordered_positions, frequencies, color="plum")
+                ax.set_xticklabels(ordered_positions, rotation=90, ha='right')
+                ax.tick_params(axis='x', which='major', labelsize=5)
+                ax.set_ylim([-1.1, 1.1])
+                ticks =  ax.get_yticks()
+                ax.set_yticklabels([abs(tick) for tick in ticks])
                 plt.savefig(os.path.join(output[0], source + "_" + error + "_SNP_positions.pdf"))
 
             for error in tqdm(percentage_dict):
                 percentages = []
                 calls = []
+                frequencies = []
                 fig = plt.figure()
                 ax = fig.add_subplot()
                 for pos in percentage_dict[error]["positions"]:
                     percentages.append(int(pos))
                     calls.append(mean(percentage_dict[error]["positions"][pos]["calls"]))
+                    frequencies.append(-len(percentage_dict[error]["positions"][pos]["calls"])/len(assembly_list))
                 #ordered_percentages = natsorted(percentages)
                 #ordered_calls = [calls[percentages.index(i)] for i in ordered_percentages]
-                ax.scatter(percentages, calls, color=percentage_dict[error]["colour"])
-                ax.set_xlim([0, 100])
-                ax.set_ylim([-0.1, 1.1])
+                ax.scatter(percentages, calls, s=10, color=percentage_dict[error]["colour"])
+                # we also are adding the frequency of SNPs at each position below the bars
+                ax.bar(percentages, frequencies, color="plum")
+                ax.set_xlim([-0.1, 100.1])
+                ax.set_ylim([-1.1, 1.1])
+                ticks =  ax.get_yticks()
+                ax.set_yticklabels([abs(tick) for tick in ticks])
                 plt.savefig(os.path.join(output[0], source + "_" + error + "_percentage_SNP_positions.pdf"))
     
         directories = [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]
