@@ -411,6 +411,7 @@ rule assess_assemblies:
             shell(varifier_command)
 
         def generate_plots(assembly_list,
+                           amplicon_stats,
                            truth_vcf_dir,
                            reference_genome,
                            simulated_genomes,
@@ -561,12 +562,14 @@ rule assess_assemblies:
             amplicon_stats = pickle.load(statIn)
         # iterate through assemblies, run varifier and generate plots 
         generate_plots(art_assemblies,
+                        amplicon_stats,
                         input[3],
                         input[2],
                         input[1],
                         "ART",
                         threads)
         generate_plots(badread_assemblies,
+                        amplicon_stats,
                         input[3],
                         input[2],
                         input[1],
