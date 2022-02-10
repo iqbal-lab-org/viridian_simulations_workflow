@@ -8,6 +8,7 @@ import pickle
 import pysam
 import random
 import shutil
+from statistics import mean
 import subprocess
 from tqdm import tqdm
 
@@ -319,7 +320,7 @@ rule mask_assemblies:
                         # we are masking regions with low coverage that are not covered by the adjacent amplicons
                         if not amplicon == 0:
                             mask_start = sample_stats[all_amplicons[amplicon-1]]["right_primer_start"]
-                         #  mask_start = sample_stats[all_amplicons[amplicon]]["amplicon_start"]
+                            #mask_start = sample_stats[all_amplicons[amplicon]]["amplicon_start"]
                         else:
                             mask_start = sample_stats[all_amplicons[amplicon]]["amplicon_start"]
                         mask_end = sample_stats[all_amplicons[amplicon+1]]["left_primer_end"]
@@ -375,10 +376,10 @@ rule truth_vcfs:
         ]
         for subset in subsetted_assemblies:
             Parallel(n_jobs=threads, prefer="threads")(delayed(run_varifier)(sample,
-                                                                                    regions_covered[os.path.basename(sample).replace(".fasta", "")],
-                                                                                    input[1],
-                                                                                    os.path.join(output[0], os.path.basename(sample).replace(".fasta", "")),
-                                                                                    params.container_dir) for sample in subset)
+                                                                            regions_covered[os.path.basename(sample).replace(".fasta", "")],
+                                                                            input[1],
+                                                                            os.path.join(output[0], os.path.basename(sample).replace(".fasta", "")),
+                                                                            params.container_dir) for sample in subset)
 
 rule assess_assemblies:
     input:
@@ -390,32 +391,47 @@ rule assess_assemblies:
     params:
         container_dir=config["container_directory"],
         scheme=config['primer_scheme']
+    threads:
+        config['threads']
     output:
         directory('varifier_statistics')
     run:
-        
+        def run_varifier(assembly,
+                         truth_vcf_dir,
+                         reference_genome,
+                         simulated_genomes):
+            """Run varifier on viridian assembly to verify SNP calls"""
+            vcf_file = os.path.join(assembly, "variants.vcf")
+            truth_vcf = os.path.join(truth_vcf_dir, os.path.basename(assembly), "04.truth.vcf")
+            truth_genome = os.path.join(simulated_genomes, os.path.basename(assembly) + ".fasta")
+            output_dir = os.path.join(output[0], os.path.join(assembly.split("/")[-2], os.path.basename(assembly)))
+            varifier_command = "singularity run " + params.container_dir + "/varifier/varifier.img vcf_eval --truth_vcf " + truth_vcf + " "
+            # varifier_command = 'singularity exec "docker://quay.io/iqballab/varifier" varifier vcf_eval --truth_vcf ' + truth_vcf + ' '
+            varifier_command += truth_genome + " " + reference_genome + " " + vcf_file + " " + output_dir
+            shell(varifier_command)
+
         def generate_plots(assembly_list,
                            truth_vcf_dir,
                            reference_genome,
                            simulated_genomes,
-                           source):
+                           source,
+                           threads):
             """Generate summary plots for the viridian assemblies"""
             # store snp positions and whether it was correctly identifed
-            snp_positions = []
-            snp_percentage = []
-            snp_called = []
-            # colour based on error mode
-            colours = []
-            neighbour_colours = []
+            plot_dict = {}
+            percentage_dict = {}
+            # parallelise varifier
+            subsetted_assemblies = [
+                assembly_list[i:i + threads] for i in range(0, len(assembly_list), threads)
+            ]
+            for subset in subsetted_assemblies:
+                Parallel(n_jobs=threads, prefer="threads")(delayed(run_varifier)(assem,
+                                                                                 truth_vcf_dir,
+                                                                                 reference_genome,
+                                                                                 simulated_genomes) for assem in subset)
+            # iterate through assemblies
             for assembly in assembly_list:
-                vcf_file = os.path.join(assembly, "variants.vcf")
-                truth_vcf = os.path.join(truth_vcf_dir, os.path.basename(assembly), "04.truth.vcf")
-                truth_genome = os.path.join(simulated_genomes, os.path.basename(assembly) + ".fasta")
                 output_dir = os.path.join(output[0], os.path.join(assembly.split("/")[-2], os.path.basename(assembly)))
-                varifier_command = "singularity run " + params.container_dir + "/varifier/varifier.img vcf_eval --truth_vcf " + truth_vcf + " "
-                # varifier_command = 'singularity exec "docker://quay.io/iqballab/varifier" varifier vcf_eval --truth_vcf ' + truth_vcf + ' '
-                varifier_command += truth_genome + " " + reference_genome + " " + vcf_file + " " + output_dir
-                shell(varifier_command)
                 # import truth vcf
                 truth_vcf_in = pysam.VariantFile(os.path.join(output_dir, "recall", "recall.vcf"))
                 truth_records = truth_vcf_in.fetch()
@@ -428,11 +444,10 @@ rule assess_assemblies:
                 varified_positions = []
                 for record in varifier_records:
                     varified_positions.append(int(record.pos))
-                # store amplicon regions for each error mode
-                error = []
                 # extract samples error modes
                 sample_stats = amplicon_stats[os.path.basename(assembly)]
                 amplicon_region = []
+                error = []
                 # import viridian summary stats to make amplicon starts and ends relative to the reference sequence
                 with open(os.path.join(assembly, "log.json")) as inJson:
                     summary = json.loads(inJson.read())["read_sampling"]
@@ -449,69 +464,92 @@ rule assess_assemblies:
                     # make position relative to the length of the amplicon
                     for region in range(len(amplicon_region)):
                         if position <= amplicon_region[region][1] and position >= amplicon_region[region][0]:
-                            snp_percentage.append((position - amplicon_region[region][0])*100/(amplicon_region[region][1]-amplicon_region[region][0]))
-                            snp_positions.append(position)
-                            if position in varified_positions:
-                                snp_called.append(1)
-                            else:
-                                snp_called.append(0)
+                            # want to look at position calls across all samples
+                            # intiate plot dictionary
                             error_mode = error[region]
-                            if error_mode == "primer_dimer":
-                                colours.append("g")
-                                neighbour_colours.append("g")
-                            elif error_mode == "primer_SNP":
-                                colours.append("r")
-                                neighbour_colours.append("r")
-                            elif error_mode == "primer_reversion":
-                                colours.append("b")
-                                neighbour_colours.append("b")
-                            elif error_mode == "random_dropout":
-                                colours.append("purple")
-                                neighbour_colours.append("purple")
-                            else:
-                                if not error[region + 1] and not error[region-1]:
-                                    colours.append("black")
-                                    neighbour_colours.append("black")
+                            if not error_mode:
+                                if error[region + 1] == "primer_dimer" or error[region-1] == "primer_dimer":
+                                    error_mode = "neighbour_primer_dimer"
+                                elif error[region + 1] == "primer_SNP" or error[region-1] == "primer_SNP":
+                                    error_mode = "neighbour_primer_SNP"
+                                elif error[region + 1] == "primer_reversion" or error[region-1] == "primer_reversion":
+                                    error_mode = "neighbour_primer_reversion"
+                                elif error[region + 1] == "random_dropout" or error[region-1] == "random_dropout":
+                                    error_mode = "neighbour_random_dropout"
                                 else:
-                                    if error[region + 1] == "primer_dimer" or error[region-1] == "primer_dimer":
-                                        neighbour_colours.append("pink")
-                                        colours.append("black")
-                                    elif error[region + 1] == "primer_SNP" or error[region-1] == "primer_SNP":
-                                        neighbour_colours.append("yellow")
-                                        colours.append("black")
-                                    elif error[region + 1] == "primer_reversion" or error[region-1] == "primer_reversion":
-                                        neighbour_colours.append("orange")
-                                        colours.append("black")
-                                    else:
-                                        neighbour_colours.append("gray")
-                                        colours.append("black")
+                                    error_mode = "no_error"
+                            if not error_mode in plot_dict:
+                                plot_dict[error_mode] = {}
+                                plot_dict[error_mode]["positions"] = {}
+                            if not position in plot_dict[error_mode]["positions"]:
+                                plot_dict[error_mode]["positions"][position] = {"calls": []}
+                            # want to make plots of calls across the amplicon lengths too
+                            percentage = round((position - amplicon_region[region][0])*100/(amplicon_region[region][1]-amplicon_region[region][0]), 2)
+                            if not error_mode in percentage_dict:
+                                percentage_dict[error_mode] = {}
+                                percentage_dict[error_mode]["positions"] = {}
+                            if not percentage in percentage_dict[error_mode]["positions"]:
+                                percentage_dict[error_mode]["positions"][percentage] = {"calls": []}
+                            if position in varified_positions:
+                                plot_dict[error_mode]["positions"][position]["calls"].append(1)
+                                percentage_dict[error_mode]["positions"][percentage]["calls"].append(1)
+                            else:
+                                plot_dict[error_mode]["positions"][position]["calls"].append(0)
+                                percentage_dict[error_mode]["positions"][percentage]["calls"].append(0)
+            # add colours to the plot dict
+            for to_plot in [plot_dict, percentage_dict]:
+                if "primer_dimer" in to_plot:
+                    to_plot["primer_dimer"]["colour"] = "g"
+                if "primer_SNP" in to_plot:  
+                    to_plot["primer_SNP"]["colour"] = "r"
+                if "primer_reversion" in to_plot:
+                    to_plot["primer_reversion"]["colour"] = "b"
+                if "random_dropout" in to_plot:
+                    to_plot["random_dropout"]["colour"] = "black"
+                if "no_error" in to_plot:
+                    to_plot["no_error"]["colour"] = "purple"
+                if "neighbour_primer_dimer" in to_plot:
+                    to_plot["neighbour_primer_dimer"]["colour"] = "lime"
+                if "neighbour_primer_SNP" in to_plot:  
+                    to_plot["neighbour_primer_SNP"]["colour"] = "pink"
+                if "neighbour_primer_reversion" in to_plot:
+                    to_plot["neighbour_primer_reversion"]["colour"] = "cyan"
+                if "neighbour_random_dropout" in to_plot:
+                    to_plot["neighbour_random_dropout"]["colour"] = "grey"
             # generate plots
             plt.style.use('seaborn-whitegrid')
-            fig = plt.figure()
-            ax = fig.add_subplot()
-            for i in tqdm(range(len(snp_percentage))):
-                ax.scatter(snp_percentage[i], snp_called[i], s=10, color=colours[i])
-            plt.savefig(os.path.join(output[0], source + "_SNP_percentages.pdf"))
-            plt.style.use('seaborn-whitegrid')
-            fig = plt.figure()
-            ax = fig.add_subplot()
-            for i in tqdm(range(len(snp_positions))):
-                ax.scatter(snp_positions[i], snp_called[i], s=10, color=colours[i])
-            plt.savefig(os.path.join(output[0], source + "_SNP_positions.pdf"))
-            # colour points based on neighbours
-            plt.style.use('seaborn-whitegrid')
-            fig = plt.figure()
-            ax = fig.add_subplot()
-            for i in tqdm(range(len(snp_percentage))):
-                ax.scatter(snp_percentage[i], snp_called[i], s=10, color=neighbour_colours[i])
-            plt.savefig(os.path.join(output[0], source + "_SNP_percentages_neighbours.pdf"))
-            plt.style.use('seaborn-whitegrid')
-            fig = plt.figure()
-            ax = fig.add_subplot()
-            for i in tqdm(range(len(snp_positions))):
-                ax.scatter(snp_positions[i], snp_called[i], s=10, color=neighbour_colours[i])
-            plt.savefig(os.path.join(output[0], source + "_SNP_positions_neighbours.pdf"))
+            for error in tqdm(plot_dict):
+                positions = []
+                calls = []
+                fig = plt.figure()
+                ax = fig.add_subplot()
+                for site in plot_dict[error]["positions"]:
+                    positions.append(str(site))
+                    calls.append(mean(plot_dict[error]["positions"][site]["calls"]))
+                ordered_positions = positions
+                ordered_positions.sort(key=int)
+                ordered_positions = [str(x) for x in positions]
+                ordered_calls = [calls[positions.index(i)] for i in ordered_positions]
+                ax.bar(ordered_positions, ordered_calls, color=plot_dict[error]["colour"])
+                ax.set_xticklabels(positions, rotation=90, ha='right')
+                ax.tick_params(axis='x', which='major', labelsize=5) 
+                plt.savefig(os.path.join(output[0], source + "_" + error + "_SNP_positions.pdf"))
 
+            for error in tqdm(percentage_dict):
+                percentages = []
+                calls = []
+                fig = plt.figure()
+                ax = fig.add_subplot()
+                for pos in percentage_dict[error]["positions"]:
+                    percentages.append(int(pos))
+                    calls.append(mean(percentage_dict[error]["positions"][pos]["calls"]))
+                #ordered_percentages = natsorted(percentages)
+                #ordered_calls = [calls[percentages.index(i)] for i in ordered_percentages]
+                ax.scatter(percentages, calls, color=percentage_dict[error]["colour"])
+                ax.set_xlim([0, 100])
+                ax.set_ylim([-0.1, 1.1])
+                plt.savefig(os.path.join(output[0], source + "_" + error + "_percentage_SNP_positions.pdf"))
+    
         directories = [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]
         if not os.path.exists(output[0]):
             for folder in directories:
@@ -523,15 +561,17 @@ rule assess_assemblies:
             amplicon_stats = pickle.load(statIn)
         # iterate through assemblies, run varifier and generate plots 
         generate_plots(art_assemblies,
-                       input[3],
-                       input[2],
-                       input[1],
-                       "ART")
+                        input[3],
+                        input[2],
+                        input[1],
+                        "ART",
+                        threads)
         generate_plots(badread_assemblies,
-                       input[3],
-                       input[2],
-                       input[1],
-                       "Badread")
+                        input[3],
+                        input[2],
+                        input[1],
+                        "Badread",
+                        threads)
            
 rule clean_outputs:
     input:
