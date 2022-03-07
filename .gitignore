@@ -173,7 +173,12 @@ viridian_assemblies
 masked_truth_assemblies
 truth_vcfs
 varifier_statistics
+varifier_statistics (copy)
+viridian_phylogenies
 
 # singularity containers
 singularity/images/*
+singularity/usher
+singularity/varifier
+singularity/viridian_workflow
 

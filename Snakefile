@@ -9,7 +9,6 @@ import pysam
 import random
 import shutil
 from statistics import mean
-import subprocess
 from tqdm import tqdm
 
 from scripts.error_modes import clean_genome, find_primer_scheme
@@ -47,7 +46,7 @@ rule phastSim_evolution:
         'mkdir {output} && singularity run {params.container_dir}/images/phastSim.img --outpath {output}/ --seed {params.seed} --createFasta \
                 --createInfo --createNewick --createPhylip --treeFile {input.tree_file} \
                 --invariable 0.1 --alpha 0.0002 --omegaAlpha 0.0002 --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 --codon \
-                --reference {input.reference_genome}'
+                --reference {input.reference_genome} --createMAT'
 
 rule split_sequences:
     input:
@@ -115,9 +114,9 @@ rule simulate_reads:
                 coverage = sample_coverages[sample_name][amplicon]
                 amplicon_file = os.path.join(genome, amplicon + '.fasta')
                 read_file = os.path.join(output_dir, amplicon)
-                subprocess_command = 'singularity run ' + container_dir +'/images/ART.img --quiet -amp -p -sam -na -i ' + amplicon_file + \
+                shell_command = 'singularity run ' + container_dir +'/images/ART.img --quiet -amp -p -sam -na -i ' + amplicon_file + \
                         ' -l ' + read_length + ' -f ' + str(coverage) + ' -o ' + read_file
-                subprocess.run(subprocess_command, shell=True, check=True)
+                shell(shell_command)
 
         def simulate_badreads(genome,
                               output,
@@ -131,9 +130,9 @@ rule simulate_reads:
                 coverage = sample_coverages[sample_name][amplicon]
                 amplicon_file = os.path.join(genome, amplicon + '.fasta')
                 read_file = os.path.join(output_dir, amplicon) + '.fastq.gz'
-                subprocess_command = 'singularity run ' + container_dir + '/images/Badread.img simulate --reference ' + amplicon_file + ' --quantity ' + str(coverage) + 'x \
+                shell_command = 'singularity run ' + container_dir + '/images/Badread.img simulate --reference ' + amplicon_file + ' --quantity ' + str(coverage) + 'x \
                 |         gzip > ' + read_file
-                subprocess.run(subprocess_command, shell=True, check=True)
+                shell(shell_command)
             return
 
         # make output dirs
@@ -243,7 +242,7 @@ rule run_viridian:
                     --keep_bam \
                     --reads2 " + rv_read + " \
                     --outdir " + output_dir + "/"
-            subprocess.run(viridian_command, shell=True, check=True)
+            shell(viridian_command)
 
         def nanopore_viridian_workflow(reference_genome,
                                        sample,
@@ -257,7 +256,7 @@ rule run_viridian:
                     --reads " + sample + " \
                     --keep_bam \
                     --outdir " + output_dir + "/"
-            subprocess.run(viridian_command, shell=True, check=True)
+            shell(viridian_command)
 
         art_samples = glob.glob(os.path.join(input[0], "ART_output", '*_1.fq'))
         badread_samples = glob.glob(os.path.join(input[0], "Badread_output", '*.fq'))
@@ -355,7 +354,7 @@ rule truth_vcfs:
             #varifier_command = 'singularity exec "docker://quay.io/iqballab/varifier" varifier make_truth_vcf --global_align '
             varifier_command += "--global_align_min_coord " + covered_start + " --global_align_max_coord " + covered_end
             varifier_command += " " + assembly + " " + reference + " " + output_dir
-            subprocess.run(varifier_command, shell=True, check=True)
+            shell(varifier_command)
 
         # make directory
         if not os.path.exists(output[0]):
@@ -591,7 +590,132 @@ rule assess_assemblies:
                         input[1],
                         "Badread",
                         threads)
-           
+
+rule build_phylogeny:
+    input:
+        viridian_assemblies=rules.run_viridian.output,
+        reference_genome=config["reference_genome"]
+    output:
+        directory("viridian_phylogenies")
+    threads:
+        config["threads"]
+    params:
+        batch_size=10
+    run:
+        def combine_vcfs(files,
+                         output_dir,
+                         file_no):
+            """ combine vcfs into a single vcf """
+            vcf_rows = {}
+            all_samples = []
+            combined_vcf = []
+            for f in files:
+                with open(os.path.join(f, "variants.vcf"), "r") as inVCF:
+                    vcf_content = inVCF.read().split("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample")[1].splitlines()[1:]
+                sample = os.path.basename(f)
+                all_samples.append(sample)
+                for v in vcf_content:
+                    if not v.replace("\t1/1", "") in vcf_rows:
+                        vcf_rows[v.replace("\t1/1", "")] = {sample: "1"}
+                    else:
+                        vcf_rows[v.replace("\t1/1", "")].update({sample: "1"})
+            for row in vcf_rows:
+                new_row = row
+                for s in all_samples:
+                    if not s in vcf_rows[row]:
+                        new_row += "\t" + "0"
+                    if s in vcf_rows[row]:
+                        new_row += "\t" + vcf_rows[row][s]
+                combined_vcf.append(new_row)
+            sorted(combined_vcf, key=lambda x: x.split("	")[1])
+            out_vcf = os.path.join(output_dir, str(file_no) + ".vcf")
+            with open(out_vcf, "w") as outFile:
+                outFile.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + "\t".join(all_samples) + "\n" + "\n".join(combined_vcf))
+            return out_vcf
+
+        def initiate_phylogeny(method,
+                               assemblies,
+                               assembly_dir,
+                               output_dir):
+            """ initiate the phylogeny with a single sample """
+            with open(os.path.join(output_dir, method + "_assemblies", method + "_tree.nwk"), "w") as outTree:
+                    outTree.write("(" + os.path.basename(assemblies[0]) + ":0)")
+            tree_dir = os.path.join(output_dir, method + "_assemblies")
+            tree_out = os.path.join(tree_dir, method + "_phylo.pb")
+            vcf_dir = os.path.join(assembly_dir, method + "_assemblies")
+            MAT_command = "singularity exec singularity/usher/usher.sif usher --tree " + os.path.join(output_dir,  method + "_assemblies", method + "_tree.nwk") + \
+            " --vcf " + os.path.join(vcf_dir, os.path.basename(assemblies[0]), "variants.vcf") + " --collapse-tree --save-mutation-annotated-tree " + \
+            tree_out + " -d " + tree_dir
+            shell(MAT_command)
+            return tree_dir, tree_out
+
+        def add_samples(combined_vcf,
+                        tree_out,
+                        tree_dir):
+            """ add samples to phylogeny with Usher """
+            usher_command = "singularity exec singularity/usher/usher.sif usher --vcf " + combined_vcf + " --load-mutation-annotated-tree " + \
+                    tree_out + " --write-uncondensed-final-tree --outdir " + tree_dir
+            shell(usher_command)
+        
+        def optimise_phylogeny(tree_file,
+                               threads):
+            """ optimise the phylogeny using matoptimise """
+            optimise_command = "singularity exec singularity/usher/usher.sif matOptimize -i " + tree_file + " -o " + tree_file + \
+                "_optimised -T " + str(threads) + " -r 4 && rm -rf " + tree_file + " && mv " + tree_file + "_optimised" + " " + tree_file
+            shell(optimise_command)
+
+        # list assemblies
+        art_assemblies = glob.glob(os.path.join(input[0], "ART_assemblies", "*"))
+        badread_assemblies = glob.glob(os.path.join(input[0], "Badread_assemblies", "*"))
+        # order assemblies so ART and Badread assemblies are added to the tree in the same order
+        sorted(art_assemblies, key=str.lower)
+        sorted(badread_assemblies, key=str.lower)
+        # concatenate assemblies into single file for alignment
+        art_fasta = []
+        for assem in art_assemblies:
+            with open(os.path.join(assem, "consensus.fa"), "r") as inAssem:
+                art_fasta.append(">" + os.path.basename(assem) + "\n" + "".join(inAssem.read().splitlines()[1:]))
+        # make output directory if it does not already exist
+        for directory in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
+            if not os.path.exists(directory):
+                os.mkdir(directory)
+        # build ART and Badread trees using USHER
+        for method in [art_assemblies, badread_assemblies]:
+            if method == art_assemblies:
+                out_dir = os.path.join(output[0], "ART_assemblies")
+            if method == badread_assemblies:
+                out_dir =  os.path.join(output[0], "Badread_assemblies")
+            # make vcf files to add in batches
+            file_no = 0
+            batched_files = [
+                method[1:][i:i + params.batch_size] for i in range(0, len(method[1:]), params.batch_size)
+            ]
+            out_vcfs = []
+            for batch in tqdm(batched_files):
+                out_vcfs.append(combine_vcfs(batch,
+                                out_dir,
+                                file_no))
+                file_no += 1
+            # make trees with one sample to start the phylogeny
+            if method == art_assemblies:
+                tree_dir, tree_file = initiate_phylogeny("ART",
+                                                         method,
+                                                         input[0],
+                                                         output[0])
+            else:
+                tree_dir, tree_file = initiate_phylogeny("Badread",
+                                                         method,
+                                                         input[0],
+                                                         output[0])
+            for combined in out_vcfs:
+                # add the samples to the phylogeny in batches
+                add_samples(combined,
+                            tree_file,
+                            tree_dir)
+                # optimise the tree after every batch is added
+                optimise_phylogeny(tree_file,
+                                   threads)
+                
 rule clean_outputs:
     input:
         VGsim_output=rules.VGsim_tree.output,
@@ -608,3 +732,7 @@ rule clean_outputs:
         'rm -rf {input.VGsim_output} {input.phastSim_output} {input.split_sequences} {input.split_amplicons} \
                 {input.read_output} {input.cat_reads} {input.run_viridian} {input.simulated_genomes} {input.viridian_eval} \
                 {input.truth_vcfs}'
+
+#mafft --6merpair --thread -10 --keeplength --addfragments othersequences referencesequence > output
+#gcc -DOPENMP -DUSE_DOUBLE -fopenmp -O3 -finline-functions -funroll-loops -Wall -o FastTreeMP FastTree.c -lm
+#./FastTreeMP -nt test.fasta > test_tree.nwk 

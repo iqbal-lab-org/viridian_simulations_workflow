@@ -25,5 +25,11 @@ subprocess.run(viridian_command, shell=True, check=True)
 # build varifier image
 varifier_command = "git clone https://github.com/iqbal-lab-org/varifier"
 varifier_command += " && cd varifier && "
-varifier_command += "singularity build --force --fakeroot varifier.img Singularity.def && cd ../.."
+varifier_command += "singularity build --force --fakeroot varifier.img Singularity.def && cd .."
 subprocess.run(varifier_command, shell=True, check=True)
+# build usher image
+usher_command = "git clone https://github.com/yatisht/usher"
+usher_command += " && cd usher && "
+usher_command += "docker build -t usher_docker install/."
+usher_command += " && sudo singularity build --force usher.sif docker-daemon://usher_docker:latest"
+subprocess.run(usher_command, shell=True, check=True)
