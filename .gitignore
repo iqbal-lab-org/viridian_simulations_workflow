@@ -176,6 +176,7 @@ varifier_statistics
 varifier_statistics (copy)
 viridian_phylogenies
 simulated_phylogenies
+phylogeny_comparisons
 
 # singularity containers
 singularity/images/*

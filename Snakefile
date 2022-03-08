@@ -637,8 +637,8 @@ rule build_viridian_phylogeny:
                                 "viridian"))
                 file_no += 1
             # make trees with one sample to start the phylogeny
-            vcf_dir = os.path.join(input[0], method + "_assemblies")
             if method == art_assemblies:
+                vcf_dir = os.path.join(input[0], "ART_assemblies")
                 tree_dir, tree_file = initiate_phylogeny("ART",
                                                          method,
                                                          input[0],
@@ -646,6 +646,7 @@ rule build_viridian_phylogeny:
                                                          "viridian",
                                                          output[0])
             else:
+                vcf_dir = os.path.join(input[0], "Badread_assemblies")
                 tree_dir, tree_file = initiate_phylogeny("Badread",
                                                          method,
                                                          input[0],
@@ -656,10 +657,11 @@ rule build_viridian_phylogeny:
                 # add the samples to the phylogeny in batches
                 add_samples(combined,
                             tree_file,
-                            tree_dir)
+                            tree_dir,
+                            threads)
                 # optimise the tree after every batch is added
-                optimise_phylogeny(tree_file,
-                                   threads)
+                #optimise_phylogeny(tree_file,
+                                #   threads)
 
 rule build_simulated_phylogeny:
     input:
@@ -736,7 +738,28 @@ rule build_simulated_phylogeny:
                 # add the samples to the phylogeny in batches
                 add_samples(combined,
                             tree_file,
-                            tree_dir)
+                            tree_dir,
+                            threads)
                 # optimise the tree after every batch is added
-                optimise_phylogeny(tree_file,
-                                   threads)
+                #optimise_phylogeny(tree_file,
+                #                    threads)
+
+rule compare_phylogenies:
+    input:
+        viridian_phylogeny=rules.build_viridian_phylogeny.output,
+        simulated_phylogeny=rules.build_simulated_phylogeny.output
+    output:
+        directory("phylogeny_comparisons")
+    threads:
+        config["threads"]
+    run:
+        sources = [input[0], input[1]]
+        methods = ["ART", "Badread"]
+        for source in sources:
+            for directory in [output[0], os.path.join(output[0], source), os.path.join(output[0], source, "ART_assemblies"), os.path.join(output[0], source, "Badread_assemblies")]:
+                if not os.path.exists(directory):
+                    os.mkdir(directory)
+            for method in methods:
+                output_tsv = os.path.join(output[0], source, method + "_assemblies", "output.tsv")
+                phylogeny = os.path.join(source, method + "_assemblies", method + "_phylo.pb")
+                shell("singularity exec singularity/usher/usher.sif matUtils extract --closest-relatives " + output_tsv + " --break-ties --threads {threads} -i " + phylogeny)

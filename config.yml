@@ -1,6 +1,6 @@
 threads: 10
 reference_genome: reference_genome.fasta
-divide_genomes: True
+divide_genomes: False
 proportion_illumina: 0.99
 primer_scheme: V4
 seed: 2022
@@ -32,4 +32,4 @@ mask_assemblies:
   apply_mask: True
 
 phylogenies:
-  batch_size: 10
+  batch_size: 50

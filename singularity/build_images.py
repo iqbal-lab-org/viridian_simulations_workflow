@@ -28,8 +28,8 @@ varifier_command += " && cd varifier && "
 varifier_command += "singularity build --force --fakeroot varifier.img Singularity.def && cd .."
 subprocess.run(varifier_command, shell=True, check=True)
 # build usher image
-usher_command = "git clone https://github.com/yatisht/usher"
+usher_command = "git clone https://github.com/yatisht/usher.git"
 usher_command += " && cd usher && "
-usher_command += "docker build -t usher_docker install/."
+usher_command += "docker build --no-cache -t usher_docker install/."
 usher_command += " && sudo singularity build --force usher.sif docker-daemon://usher_docker:latest"
 subprocess.run(usher_command, shell=True, check=True)

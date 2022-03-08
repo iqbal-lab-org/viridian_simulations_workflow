@@ -46,7 +46,7 @@ def initiate_phylogeny(method,
                        output_dir):
     """ initiate the phylogeny with a single sample """
     with open(os.path.join(output_dir, method + "_assemblies", method + "_tree.nwk"), "w") as outTree:
-            outTree.write("(" + os.path.basename(assemblies[0]) + ":0)")
+            outTree.write("(" + os.path.basename(assemblies[0]) + ")")
     tree_dir = os.path.join(output_dir, method + "_assemblies")
     tree_out = os.path.join(tree_dir, method + "_phylo.pb")
     if source == "viridian":
@@ -54,22 +54,23 @@ def initiate_phylogeny(method,
     if source == "simulated":
         vcf_file = os.path.join(vcf_dir, os.path.basename(assemblies[0]), "04.truth.vcf")
     MAT_command = "singularity exec singularity/usher/usher.sif usher --tree " + os.path.join(output_dir,  method + "_assemblies", method + "_tree.nwk") + \
-    " --vcf " + vcf_file + " --collapse-tree --save-mutation-annotated-tree " + \
+    " --vcf " + vcf_file + " --save-mutation-annotated-tree " + \
     tree_out + " -d " + tree_dir
-    subprocess.run(MAT_command, shell=True, check=True)
+    subprocess.run(MAT_command, shell=True, check=True)    
     return tree_dir, tree_out
 
 def add_samples(combined_vcf,
                 tree_out,
-                tree_dir):
+                tree_dir,
+                threads):
     """ add samples to phylogeny with Usher """
     usher_command = "singularity exec singularity/usher/usher.sif usher --vcf " + combined_vcf + " --load-mutation-annotated-tree " + \
-            tree_out + " --write-uncondensed-final-tree --outdir " + tree_dir
+            tree_out + " --write-uncondensed-final-tree -T " + str(threads) + " --save-mutation-annotated-tree " + tree_out +" --outdir " + tree_dir
     subprocess.run(usher_command, shell=True, check=True)
 
 def optimise_phylogeny(tree_file,
                        threads):
     """ optimise the phylogeny using matoptimise """
     optimise_command = "singularity exec singularity/usher/usher.sif matOptimize -i " + tree_file + " -o " + tree_file + \
-        "_optimised -T " + str(threads) + " -r 4 && rm -rf " + tree_file + " && mv " + tree_file + "_optimised" + " " + tree_file
+        "_optimised -T " + str(threads) + " -r 4 && rm -rf " + tree_file + " && mv " + tree_file + "_optimised " + tree_file 
     subprocess.run(optimise_command, shell=True, check=True)
