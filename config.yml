@@ -30,3 +30,6 @@ simulate_reads:
 
 mask_assemblies:
   apply_mask: True
+
+phylogenies:
+  batch_size: 10

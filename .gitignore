@@ -175,6 +175,7 @@ truth_vcfs
 varifier_statistics
 varifier_statistics (copy)
 viridian_phylogenies
+simulated_phylogenies
 
 # singularity containers
 singularity/images/*
