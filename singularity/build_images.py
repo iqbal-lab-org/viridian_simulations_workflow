@@ -27,6 +27,11 @@ varifier_command = "git clone https://github.com/iqbal-lab-org/varifier"
 varifier_command += " && cd varifier && "
 varifier_command += "singularity build --force --fakeroot varifier.img Singularity.def && cd .."
 subprocess.run(varifier_command, shell=True, check=True)
+# build cte image
+varifier_command = "git clone https://github.com/iqbal-lab-org/covid-truth-eval"
+varifier_command += " && cd covid-truth-eval && "
+varifier_command += "singularity build --force --fakeroot cte.img Singularity.def && cd .."
+subprocess.run(varifier_command, shell=True, check=True)
 # build usher image
 usher_command = "git clone https://github.com/yatisht/usher.git"
 usher_command += " && cd usher && "

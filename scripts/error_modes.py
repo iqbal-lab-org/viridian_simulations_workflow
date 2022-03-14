@@ -317,6 +317,9 @@ def extract_amplicons(primer_df,
             amplicon_stats[primer_id]["coverage"] = 0
             amplicon_stats[primer_id]["errors"].append("random_dropout")
             amplicon_coverages[primer_id] = 0
+            # write out amplicon file
+            with open(os.path.join(output_dir, sample_name, primer_id + '.fasta'), 'w') as outFasta:
+                outFasta.write('>' + primer_id + '\n' + amplicon)
             continue
         # determine if it's necessary to apply an error mode
         if total_primer_mismatches == 0:

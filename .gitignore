@@ -177,10 +177,12 @@ varifier_statistics (copy)
 viridian_phylogenies
 simulated_phylogenies
 phylogeny_comparisons
+cte_output
 
 # singularity containers
 singularity/images/*
 singularity/usher
 singularity/varifier
 singularity/viridian_workflow
+singularity/covid-truth-eval
 
