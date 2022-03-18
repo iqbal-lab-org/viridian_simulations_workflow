@@ -58,7 +58,7 @@ rule split_sequences:
         if not os.path.exists(output[0]):
             os.mkdir(output[0])
         for sequence in genomes:
-            with open(os.path.join(output[0], sequence.splitlines()[0] + '.fasta'), 'w') as outSeq:
+            with open(os.path.join(output[0], sequence.splitlines()[0] + '_a.fasta'), 'w') as outSeq:
                 outSeq.write('>' + sequence)
 
 rule split_amplicons:
@@ -69,6 +69,7 @@ rule split_amplicons:
         directory('amplicon_sequences')
     params:
         primer_scheme=config['primer_scheme'],
+        scheme_dir=config["primer_scheme_dir"],
         seed=config["seed"],
         random_dropout_probability=config['split_amplicons']['random_dropout_probability'],
         primer_dimer_probability=config['split_amplicons']['primer_dimer_probability'],
@@ -80,7 +81,7 @@ rule split_amplicons:
     threads:
         config['threads']
     shell:
-        "python scripts/error_modes.py --scheme {params.primer_scheme} --input-dir {input.split_sequences} --output-dir {output} --container-dir {params.container_dir} \
+        "python scripts/error_modes.py --scheme {params.primer_scheme} --scheme-dir {params.scheme_dir} --input-dir {input.split_sequences} --output-dir {output} --container-dir {params.container_dir} \
             --seed {params.seed} --dropout-prob {params.random_dropout_probability} --dimer-prob {params.primer_dimer_probability} \
             --match-mean {params.match_coverage_mean} --match-sd {params.match_coverage_sd} --mismatch-mean {params.mismatch_coverage_mean} \
             --mismatch-sd {params.mismatch_coverage_sd} --threads {threads}"
@@ -220,7 +221,7 @@ rule cat_reads:
 
 rule run_viridian:
     input:
-        simulated_genomes=rules.cat_reads.output,
+        simulated_reads=rules.cat_reads.output,
         reference_genome=config["reference_genome"]
     output:
         directory('viridian_assemblies')
@@ -382,6 +383,40 @@ rule truth_vcfs:
                                                                             os.path.join(output[0], os.path.basename(sample).replace(".fasta", "")),
                                                                             params.container_dir) for sample in subset)
 
+rule artic_assemble:
+    input:
+        simulated_reads=rules.cat_reads.output,
+    output:
+        directory("artic_assemblies")
+    threads:
+        config["threads"]
+    params:
+        scheme_dir=config["primer_scheme_dir"],
+        container_dir=config["container_directory"],
+        nextflow_path=config["artic_assemble"]["nextflow_path"]
+    run:
+        # list read sets
+        art_samples = glob.glob(os.path.join(input[0], "ART_output", '*_1.fq'))
+        badread_samples = glob.glob(os.path.join(input[0], "Badread_output", '*.fq.gz'))
+        # make output directories
+        for subdir in [output[0], os.path.join(output[0], "Badread_assemblies")]:
+            if not os.path.exists(subdir):
+                os.mkdir(subdir)
+        # run artic pipeline on read sets
+        #for read in art_samples:
+            #shell_command = "python3 scripts/run_connor_pipeline.py --sif " + os.path.join(params.container_dir, "ncov2019-artic-nf", "environments", "illumina", "artic_illumina.sif") + " "
+            #shell_command += "--main_nf " + os.path.join(params.container_dir, "ncov2019-artic-nf") + " --outdir " + os.path.join(output[0], "ART_assemblies", os.path.basename(read).replace("_1.fq", "")) + " "
+           # shell_command += "--scheme_url " + params.scheme_dir + " --container_dir " + params.container_dir + " --ilm1 " + read + " --ilm2 " + read.replace("_1.fq", "_2.fq") + " --nextflow_path " + params.nextflow_path
+            #shell_command += " --sample_name " + os.path.basename(read).replace("_1.fq", "")
+           # shell(shell_command)
+        for read in badread_samples:
+            shell_command = "python3 scripts/run_connor_pipeline.py --sif " + os.path.join(params.container_dir, "ncov2019-artic-nf", "environments", "illumina", "artic_illumina.sif") + " "
+            shell_command += "--main_nf " + os.path.join(params.container_dir, "ncov2019-artic-nf") + " --outdir " + os.path.join(output[0], "Badread_assemblies", os.path.basename(read).replace(".fq.gz", "")) + " "
+            shell_command += "--scheme_url " + params.scheme_dir + " --container_dir " + params.container_dir + " --ont " + read + " --nextflow_path " + params.nextflow_path
+            shell_command += " --sample_name " + os.path.basename(read).replace(".fq.gz", "")
+            shell(shell_command)
+
+
 rule covid_truth_eval:
     input:
         reference_genome=config["reference_genome"],
@@ -412,19 +447,21 @@ rule covid_truth_eval:
         # iterate through assemblies
         all_assems = [art_assemblies, badread_assemblies]
         for method in range(len(all_assems)):
+            manifest = ["name\ttruth_vcf\teval_fasta\tprimers"]
             for assem in all_assems[method]:
                 if method == 0:
                     outdir = os.path.join(output[0], "ART_assemblies")
                 else:
                     outdir = os.path.join(output[0], "Badread_assemblies")
                 vcf_file = os.path.join(input[2], os.path.basename(assem), "04.truth.vcf")
-                shell_command = "singularity run " + params.container_dir + "/covid-truth-eval/cte.img eval_one_run \
-                    --outdir OUT  \
-                    --truth_vcf " + vcf_file + " \
-                    --fasta_to_eval " + os.path.join(assem, "consensus.fa") +" \
-                    --primers " + scheme + " && mv OUT " + str(os.path.basename(assem)) + " && mv " + \
-                        str(os.path.basename(assem)) + " " + outdir
-                shell(shell_command)
+                manifest.append(os.path.basename(assem) + "\t" + vcf_file + "\t" + os.path.join(assem, "consensus.fa") + "\t" + scheme)
+            # save metadata as tsv file
+            with open(os.path.join(outdir, "manifest.tsv"), "w") as manifestOut:
+                manifestOut.write("\n".join(manifest))
+            # run covid-truth-eval
+            shell_command = "singularity run " + params.container_dir + "/covid-truth-eval/cte.img eval_runs \
+                --outdir " + os.path.join(outdir, "OUT") + " " + os.path.join(outdir, "manifest.tsv")
+            shell(shell_command)
 
 rule assess_assemblies:
     input:
@@ -470,9 +507,9 @@ rule assess_assemblies:
                         threads,
                         output[0],
                         params.container_dir)
-        # generate heat map from truth eval output
-        generate_heatmap(os.path.join(input[5], "ART_assemblies"), "ART", output[0])
-        generate_heatmap(os.path.join(input[5], "Badread_assemblies"), "Badread", output[0])
+        # generate plot for results of covid truth eval output
+        generate_heatmap(os.path.join(input[5], "ART_assemblies", "OUT", "processing"), "ART", output[0])
+        generate_heatmap(os.path.join(input[5], "Badread_assemblies", "OUT", "processing"), "Badread", output[0])
 
 rule build_viridian_phylogeny:
     input:
@@ -625,6 +662,7 @@ rule build_simulated_phylogeny:
                 # optimise the tree after every batch is added
                 optimise_phylogeny(tree_file,
                                     threads)
+
 
 rule compare_phylogenies:
     input:

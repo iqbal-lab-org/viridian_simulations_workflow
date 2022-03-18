@@ -191,6 +191,7 @@ def generate_plots(assembly_list,
 def generate_heatmap(eval_dir, method, output_dir):
     """Generate heatmap of viridian assembly SNPs vs ref"""
     cte_files = glob.glob(os.path.join(eval_dir, "*"))
+    print(cte_files)
     call_dict = {}
     for subdir in tqdm(cte_files):
         per_position = pd.read_csv(os.path.join(subdir, "per_position.tsv"), sep='\t')

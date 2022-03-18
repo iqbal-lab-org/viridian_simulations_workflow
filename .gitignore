@@ -159,6 +159,7 @@ htslib-1.14.tar.bz2
 Badread
 bedtools2
 artbinmountrainier2016.06.05linux64.tgz
+nextflow
 
 # outputs
 phastSim_output
@@ -178,6 +179,7 @@ viridian_phylogenies
 simulated_phylogenies
 phylogeny_comparisons
 cte_output
+artic_assemblies
 
 # singularity containers
 singularity/images/*
@@ -185,4 +187,8 @@ singularity/usher
 singularity/varifier
 singularity/viridian_workflow
 singularity/covid-truth-eval
+
+# artic pipeline
+ncov2019-artic-nf
+
 

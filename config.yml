@@ -3,8 +3,9 @@ reference_genome: reference_genome.fasta
 divide_genomes: False
 proportion_illumina: 0.90
 primer_scheme: V4
+primer_scheme_dir: https://github.com/artic-network/artic-ncov2019/tree/master/primer_schemes/nCoV-2019/V4
 seed: 2022
-container_directory: singularity
+container_directory: ~/Documents/GitHub/viridian_simulations_workflow/singularity
 
 VGsim:
   rate_file: VGsim_params/rate_file.rt
@@ -27,6 +28,9 @@ split_amplicons:
 
 simulate_reads:
   illumina_read_length: 250
+
+artic_assemble:
+  nextflow_path: ~/Documents/GitHub/viridian_simulations_workflow/nextflow
 
 mask_assemblies:
   apply_mask: True

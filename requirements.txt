@@ -2,6 +2,7 @@ joblib
 matplotlib
 numpy
 pandas
+pyfastaq
 pysam
 snakemake
 tqdm

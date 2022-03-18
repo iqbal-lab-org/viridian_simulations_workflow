@@ -3,6 +3,7 @@ import glob
 from joblib import Parallel, delayed
 import json
 import numpy as np
+from numpy.random import RandomState
 import os
 import pandas as pd
 import pickle
@@ -14,11 +15,12 @@ import sys
 import tempfile
 from tqdm import tqdm
 
-def find_primer_scheme(scheme):
+def find_primer_scheme(scheme,
+                       scheme_dir):
     """Determine the primer scheme and load the metadata"""
     if scheme == "V3":
         # path of V3 artic primer metadata
-        primer_sequences = "V3/nCoV-2019.tsv"
+        primer_sequences = os.path.join(scheme_dir, scheme, "nCoV-2019.tsv")
         # import tsv file as pandas dataframe
         primer_df = pd.read_csv(primer_sequences, sep='\t')
         # split primer sequences by their pool
@@ -32,7 +34,7 @@ def find_primer_scheme(scheme):
         return primer_df, pool1_primers, pool2_primers
     if "V4" in scheme:
         # path of V4 artic primer metadata
-        primer_sequences = os.path.join(scheme, "SARS-CoV-2.primer.bed")
+        primer_sequences = os.path.join(scheme_dir, scheme, "SARS-CoV-2.primer.bed")
         # import bed file as string
         with open(primer_sequences, "r") as inV4:
             primers = inV4.read().splitlines()
@@ -54,7 +56,7 @@ def find_primer_scheme(scheme):
         if scheme == "V4":
             return pd.DataFrame(primer_dict), pool1_primers, pool2_primers
         elif scheme == "V4.1":
-            with open(os.path.join(scheme, "SARS-CoV-2.primer_pairs.tsv")) as inTSV:
+            with open(os.path.join(scheme_dir, scheme, "SARS-CoV-2.primer_pairs.tsv")) as inTSV:
                 pairs = inTSV.read().splitlines()
             primer_data = []
             ordered_primer_names = []
@@ -183,7 +185,7 @@ def clean_genome(fasta_file):
     with open(fasta_file, 'r') as g:
         fasta = g.read().splitlines()
     # split fasta into sample name and sequence
-    sample_name = fasta[0].split('>')[1]
+    sample_name = os.path.basename(fasta_file).split(".fasta")[0]
     sample_sequence = ''.join(fasta[1:])
     return sample_name, sample_sequence
 
@@ -273,7 +275,7 @@ def extract_amplicons(primer_df,
                       container_dir):
     """Identify best matching primer pairs and extract the amplicon sequence"""
     # set the seed
-    np.random.seed(seed)
+    rndm = RandomState(seed)
     # import the simulated squence
     sample_name, sample_sequence = clean_genome(sequence_file)
     # we need to map primers to the simulated genomes so INDELs are properly considered
@@ -312,7 +314,7 @@ def extract_amplicons(primer_df,
                                     "primer_mismatches": total_primer_mismatches,
                                     "mismatch_positions": amplicon_primer_mismatches}
         # determine if this amplicon will randomly drop out
-        if np.random.binomial(n=1, p=(random_dropout_probability)) == 1:
+        if rndm.binomial(n=1, p=(random_dropout_probability)) == 1:
             amplicon_stats[primer_id]['has_error'] = True
             amplicon_stats[primer_id]["coverage"] = 0
             amplicon_stats[primer_id]["errors"].append("random_dropout")
@@ -326,7 +328,7 @@ def extract_amplicons(primer_df,
             # determine sequencing coverage
             coverage = -1
             while coverage < 0:
-                coverage = int(round(np.random.normal(loc=float(match_coverage_mean),
+                coverage = int(round(rndm.normal(loc=float(match_coverage_mean),
                                                 scale=float(match_coverage_sd))))
             # check for the possibility of primer dimers and decide if dimer will form with fixed probability
             if left_primers['pool'][position] == "nCoV-2019_1":
@@ -338,13 +340,13 @@ def extract_amplicons(primer_df,
             for seq in pool_seqs:
                 for dimer_seq in [left_primers["seq"][position], right_primers["seq"][position]]:
                     if dimer_seq[-3:] == reverse_complement(seq[:3]) \
-                        and np.random.binomial(n=1, p=(dimer_prob)) == 1:
+                        and rndm.binomial(n=1, p=(dimer_prob)) == 1:
                         amplicon = dimer_seq[:-3] + reverse_complement(seq)
                         dimer = True
                         if dimer_seq == right_primers["seq"][position]:
                             amplicon = reverse_complement(amplicon)
                     elif seq[-3:] == reverse_complement(dimer_seq[:3]) \
-                        and np.random.binomial(n=1, p=(dimer_prob)) == 1:
+                        and rndm.binomial(n=1, p=(dimer_prob)) == 1:
                         amplicon = seq[-3:] + reverse_complement(dimer_seq)
                         dimer = True
                         if dimer_seq == right_primers["seq"][position]:
@@ -356,11 +358,11 @@ def extract_amplicons(primer_df,
                 amplicon_stats[primer_id]["errors"].append("primer_dimer")
         else:
             # apply reduced coverage due to SNP or reference primer reversion with 50% probability
-            reference_reversion = np.random.binomial(n=1, p=(0.5))
+            reference_reversion = rndm.binomial(n=1, p=(0.5))
             if not reference_reversion == 1:
                 coverage = -1
                 while coverage < 0:
-                    coverage = int(round(np.random.normal(loc=float(mismatch_coverage_mean),
+                    coverage = int(round(rndm.normal(loc=float(mismatch_coverage_mean),
                                                     scale=float(mismatch_coverage_sd))))
                 amplicon_stats[primer_id]["errors"].append("primer_SNP")
             # if the primer reverts to reference, maintain a high sequencing coverage
@@ -374,7 +376,7 @@ def extract_amplicons(primer_df,
                                          amplicon_primer_mismatches)
                 coverage = -1
                 while coverage < 0:
-                    coverage = int(round(np.random.normal(loc=float(match_coverage_mean),
+                    coverage = int(round(rndm.normal(loc=float(match_coverage_mean),
                                                     scale=float(match_coverage_sd))))
                 amplicon_stats[primer_id]["errors"].append("primer_reversion")
             amplicon_stats[primer_id]['has_error'] = True
@@ -393,6 +395,9 @@ def get_options():
     parser.add_argument("--scheme", dest="primer_scheme", required=True,
                         help="artic primer scheme to use",
                         choices=["V3", "V4", "V4.1"],
+                        type=str)
+    parser.add_argument("--scheme-dir", dest="scheme_dir", required=True,
+                        help="artic primer scheme directory",
                         type=str)
     parser.add_argument("--input-dir", dest="input_dir", required=True,
                         help="directory containing simulated sequences",
@@ -434,7 +439,8 @@ def main():
     # parse commmand line args
     args = get_options()
     # import correct primers for primer scheme
-    primer_df, pool1_primers, pool2_primers = find_primer_scheme(args.primer_scheme)
+    primer_df, pool1_primers, pool2_primers = find_primer_scheme(args.primer_scheme,
+                                                                 args.scheme_dir)
     # create output directory
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
