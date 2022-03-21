@@ -3,7 +3,7 @@ reference_genome: reference_genome.fasta
 divide_genomes: False
 proportion_illumina: 0.90
 primer_scheme: V4
-primer_scheme_dir: https://github.com/artic-network/artic-ncov2019/tree/master/primer_schemes/nCoV-2019/V4
+primer_scheme_dir: https://github.com/artic-network/primer-schemes
 seed: 2022
 container_directory: ~/Documents/GitHub/viridian_simulations_workflow/singularity
 

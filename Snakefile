@@ -399,16 +399,16 @@ rule artic_assemble:
         art_samples = glob.glob(os.path.join(input[0], "ART_output", '*_1.fq'))
         badread_samples = glob.glob(os.path.join(input[0], "Badread_output", '*.fq.gz'))
         # make output directories
-        for subdir in [output[0], os.path.join(output[0], "Badread_assemblies")]:
+        for subdir in [output[0], os.path.join(output[0], "ART_assemblies")]:
             if not os.path.exists(subdir):
                 os.mkdir(subdir)
         # run artic pipeline on read sets
-        #for read in art_samples:
-            #shell_command = "python3 scripts/run_connor_pipeline.py --sif " + os.path.join(params.container_dir, "ncov2019-artic-nf", "environments", "illumina", "artic_illumina.sif") + " "
-            #shell_command += "--main_nf " + os.path.join(params.container_dir, "ncov2019-artic-nf") + " --outdir " + os.path.join(output[0], "ART_assemblies", os.path.basename(read).replace("_1.fq", "")) + " "
-           # shell_command += "--scheme_url " + params.scheme_dir + " --container_dir " + params.container_dir + " --ilm1 " + read + " --ilm2 " + read.replace("_1.fq", "_2.fq") + " --nextflow_path " + params.nextflow_path
-            #shell_command += " --sample_name " + os.path.basename(read).replace("_1.fq", "")
-           # shell(shell_command)
+        for read in art_samples:
+            shell_command = "python3 scripts/run_connor_pipeline.py --sif " + os.path.join(params.container_dir, "ncov2019-artic-nf", "environments", "illumina", "artic_illumina.sif") + " "
+            shell_command += "--main_nf " + os.path.join(params.container_dir, "ncov2019-artic-nf") + " --outdir " + os.path.join(output[0], "ART_assemblies", os.path.basename(read).replace("_1.fq", "")) + " "
+            shell_command += "--scheme_url " + params.scheme_dir + " --container_dir " + params.container_dir + " --ilm1 " + read + " --ilm2 " + read.replace("_1.fq", "_2.fq") + " --nextflow_path " + params.nextflow_path
+            shell_command += " --sample_name " + os.path.basename(read).replace("_1.fq", "")
+            shell(shell_command)
         for read in badread_samples:
             shell_command = "python3 scripts/run_connor_pipeline.py --sif " + os.path.join(params.container_dir, "ncov2019-artic-nf", "environments", "illumina", "artic_illumina.sif") + " "
             shell_command += "--main_nf " + os.path.join(params.container_dir, "ncov2019-artic-nf") + " --outdir " + os.path.join(output[0], "Badread_assemblies", os.path.basename(read).replace(".fq.gz", "")) + " "
