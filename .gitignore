@@ -190,5 +190,5 @@ singularity/covid-truth-eval
 
 # artic pipeline
 ncov2019-artic-nf
-
+.nextflow
 

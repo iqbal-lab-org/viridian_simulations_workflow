@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from scripts.error_modes import clean_genome, find_primer_scheme
 from scripts.phylogenies import combine_vcfs, initiate_phylogeny, add_samples, optimise_phylogeny
-from scripts.make_plots import run_varifier, generate_plots, generate_heatmap
+from scripts.make_plots import run_cte, run_varifier, generate_plots, generate_heatmap
 
 configfile: 'config.yml'
 
@@ -195,12 +195,12 @@ rule cat_reads:
         for genome in art_samples:
             # concat forward reads
             forward_reads = sorted(glob.glob(os.path.join(genome, '*1.fq')))
-            forward_filename = os.path.join(output[0], 'ART_output', os.path.basename(genome[:-1])) + '_1.fq'
+            forward_filename = os.path.join(output[0], 'ART_output', os.path.basename(genome[:-1])) + '_1.fastq'
             fw_concat_command = 'cat ' + ' '.join(forward_reads) + ' > ' + forward_filename
             shell(fw_concat_command)
             # concat reverse reads
             reverse_reads = sorted(glob.glob(os.path.join(genome, '*2.fq')))
-            reverse_filename = os.path.join(output[0], 'ART_output', os.path.basename(genome[:-1])) + '_2.fq'
+            reverse_filename = os.path.join(output[0], 'ART_output', os.path.basename(genome[:-1])) + '_2.fastq'
             rv_concat_command = 'cat ' + ' '.join(reverse_reads) + ' > ' + reverse_filename
             shell(rv_concat_command)
         # cat Badreads
@@ -210,12 +210,12 @@ rule cat_reads:
             new_filenames = []
             # gunzip read files for concatenation
             for read_file in reads:
-                new_name = read_file.replace(".fastq.gz", ".fq")
+                new_name = read_file.replace(".fastq.gz", ".fastq")
                 with gzip.open(read_file, 'rb') as f_in:
                     with open(new_name, 'wb') as f_out:
                         shutil.copyfileobj(f_in, f_out)
                 new_filenames.append(new_name)
-            filename = os.path.join(output[0], 'Badread_output', os.path.basename(sample[:-1])) + '.fq'
+            filename = os.path.join(output[0], 'Badread_output', os.path.basename(sample[:-1])) + '.fastq'
             concat_command = 'cat ' + ' '.join(new_filenames) + ' > ' + filename
             shell(concat_command)
 
@@ -237,7 +237,7 @@ rule run_viridian:
             """Function to run viridian on ART read sets"""
             fw_read = sample
             rv_read = sample.replace('_1', '_2')
-            output_dir = os.path.join(output, os.path.basename(sample).replace('_1.fq', ''))
+            output_dir = os.path.join(output, os.path.basename(sample).replace('_1.fastq', ''))
             viridian_command = "singularity run " + container_dir + "/viridian_workflow/viridian_workflow.img run_one_sample \
                     --tech illumina \
                     --ref_fasta " + reference_genome + " \
@@ -252,7 +252,7 @@ rule run_viridian:
                                        output,
                                        container_dir):
             """Function to run viridian on Badread read sets"""
-            output_dir = os.path.join(output, os.path.basename(sample).replace('.fq', ''))
+            output_dir = os.path.join(output, os.path.basename(sample).replace('.fastq', ''))
             viridian_command = "singularity run " + container_dir + "/viridian_workflow/viridian_workflow.img run_one_sample \
                     --tech ont \
                     --ref_fasta " + reference_genome + " \
@@ -261,8 +261,8 @@ rule run_viridian:
                     --outdir " + output_dir + "/"
             shell(viridian_command)
 
-        art_samples = glob.glob(os.path.join(input[0], "ART_output", '*_1.fq'))
-        badread_samples = glob.glob(os.path.join(input[0], "Badread_output", '*.fq'))
+        art_samples = glob.glob(os.path.join(input[0], "ART_output", '*_1.fastq'))
+        badread_samples = glob.glob(os.path.join(input[0], "Badread_output", '*.fastq'))
         # make necessary directories
         directories = [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]
         if not os.path.exists(output[0]):
@@ -392,38 +392,85 @@ rule artic_assemble:
         config["threads"]
     params:
         scheme_dir=config["primer_scheme_dir"],
+        primer_scheme=config['primer_scheme'],
         container_dir=config["container_directory"],
         nextflow_path=config["artic_assemble"]["nextflow_path"]
     run:
+
+        def illumina_artic_assemble(forward_rd,
+                                    reverse_rd,
+                                    sif_file,
+                                    main_nf,
+                                    scheme_url,
+                                    output_dir,
+                                    nextflow_path,
+                                    primer_scheme):
+            """run illumina artic nextflow pipeline"""
+            shell_command = "gzip " + forward_rd + " " + reverse_rd + " && "
+            shell_command += "python3 scripts/run_connor_pipeline.py --sif " + sif_file + " "
+            shell_command += "--main_nf " + main_nf + " --outdir " + output_dir + " "
+            shell_command += "--scheme_url " + scheme_url + " --scheme_version " + primer_scheme + " "
+            shell_command += "--ilm1 " + forward_rd + ".gz " + "--ilm2 " + reverse_rd + ".gz" + " --nextflow_path " + nextflow_path + " "
+            shell_command += "--sample_name " + os.path.basename(forward_rd).replace("_1.fastq", "")
+            shell(shell_command)
+
+        def nanopore_artic_assemble(read_file,
+                                    sif_file,
+                                    main_nf,
+                                    scheme_url,
+                                    output_dir,
+                                    nextflow_path,
+                                    primer_scheme):
+            """run nanopore artic nextflow pipeline"""
+            shell_command = "gzip " + read_file + " && "
+            shell_command += "python3 scripts/run_connor_pipeline.py --sif " + sif_file + " "
+            shell_command += "--main_nf " + main_nf + " --outdir " + output_dir + " "
+            shell_command += "--ont " + read_file + ".gz "
+            shell_command += "--scheme_url " + scheme_url + " --scheme_version " + primer_scheme + " --nextflow_path " + nextflow_path + " "
+            shell_command += "--sample_name " + os.path.basename(read_file).replace(".fastq", "")
+            print(shell_command)
+            #shell(shell_command) 
+        
         # list read sets
-        art_samples = glob.glob(os.path.join(input[0], "ART_output", '*_1.fq'))
-        badread_samples = glob.glob(os.path.join(input[0], "Badread_output", '*.fq.gz'))
+        art_samples = glob.glob(os.path.join(input[0], "ART_output", '*_1.fastq'))
+        badread_samples = glob.glob(os.path.join(input[0], "Badread_output", '*.fastq'))
         # make output directories
-        for subdir in [output[0], os.path.join(output[0], "ART_assemblies")]:
+        for subdir in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
             if not os.path.exists(subdir):
                 os.mkdir(subdir)
         # run artic pipeline on read sets
-        for read in art_samples:
-            shell_command = "python3 scripts/run_connor_pipeline.py --sif " + os.path.join(params.container_dir, "ncov2019-artic-nf", "environments", "illumina", "artic_illumina.sif") + " "
-            shell_command += "--main_nf " + os.path.join(params.container_dir, "ncov2019-artic-nf") + " --outdir " + os.path.join(output[0], "ART_assemblies", os.path.basename(read).replace("_1.fq", "")) + " "
-            shell_command += "--scheme_url " + params.scheme_dir + " --container_dir " + params.container_dir + " --ilm1 " + read + " --ilm2 " + read.replace("_1.fq", "_2.fq") + " --nextflow_path " + params.nextflow_path
-            shell_command += " --sample_name " + os.path.basename(read).replace("_1.fq", "")
-            shell(shell_command)
-        for read in badread_samples:
-            shell_command = "python3 scripts/run_connor_pipeline.py --sif " + os.path.join(params.container_dir, "ncov2019-artic-nf", "environments", "illumina", "artic_illumina.sif") + " "
-            shell_command += "--main_nf " + os.path.join(params.container_dir, "ncov2019-artic-nf") + " --outdir " + os.path.join(output[0], "Badread_assemblies", os.path.basename(read).replace(".fq.gz", "")) + " "
-            shell_command += "--scheme_url " + params.scheme_dir + " --container_dir " + params.container_dir + " --ont " + read + " --nextflow_path " + params.nextflow_path
-            shell_command += " --sample_name " + os.path.basename(read).replace(".fq.gz", "")
-            shell(shell_command)
+        subsetted_art = [
+            art_samples[i:i + int(round(threads/2))] for i in range(0, len(art_samples), int(round(threads/2)))
+        ]
+        subsetted_badread = [
+            badread_samples[i:i + int(round(threads/2))] for i in range(0, len(badread_samples), int(round(threads/2)))
+        ]
+        for subset in tqdm(subsetted_art):
+            Parallel(n_jobs=int(round(threads/2)), prefer="threads")(delayed(illumina_artic_assemble)(read,
+                                                                                            read.replace("_1.fastq", "_2.fastq"),
+                                                                                            os.path.join(params.container_dir, "ncov2019-artic-nf", "artic-ncov2019-illumina.20210408.8af5152cf7.sif"),
+                                                                                            os.path.join(params.container_dir, "ncov2019-artic-nf", "main.nf"),
+                                                                                            params.scheme_dir,
+                                                                                            os.path.join(output[0], "ART_assemblies", os.path.basename(read).replace("_1.fastq", "")),
+                                                                                            params.nextflow_path,
+                                                                                            params.primer_scheme) for read in subset)
+        for subset in tqdm(subsetted_badread):
+            Parallel(n_jobs=int(round(threads/2)), prefer="threads")(delayed(nanopore_artic_assemble)(read,
+                                                                                            os.path.join(params.container_dir, "ncov2019-artic-nf", "artic-ncov2019-nanopore.20210408.8af5152cf7.sif"),
+                                                                                            os.path.join(params.container_dir, "ncov2019-artic-nf", "main.nf"),
+                                                                                            params.scheme_dir,
+                                                                                            os.path.join(output[0], "Badread_assemblies", os.path.basename(read).replace(".fastq", "")),
+                                                                                            params.nextflow_path,
+                                                                                            params.primer_scheme) for read in subset)
 
-
-rule covid_truth_eval:
+rule viridian_covid_truth_eval:
     input:
         reference_genome=config["reference_genome"],
         viridian_assemblies=rules.run_viridian.output,
         truth_vcf=rules.truth_vcfs.output,
+        artic_assemblies=rules.artic_assemble.output
     output:
-        directory("cte_output")
+        directory("cte_viridian_output")
     threads:
         config["threads"]
     params:
@@ -437,32 +484,42 @@ rule covid_truth_eval:
         # list viridian assemblies
         art_assemblies = glob.glob(os.path.join(input[1], "ART_assemblies", "*"))
         badread_assemblies = glob.glob(os.path.join(input[1], "Badread_assemblies", "*"))
-        # define the primer scheme
-        if params.primer_scheme == "V3":
-            scheme = "COVID-ARTIC-V3"
-        if params.primer_scheme == "V4":
-            scheme = "COVID-ARTIC-V4"
-        if params.primer_scheme == "V4.1":
-            scheme = "COVID-MIDNIGHT-1200"
-        # iterate through assemblies
-        all_assems = [art_assemblies, badread_assemblies]
-        for method in range(len(all_assems)):
-            manifest = ["name\ttruth_vcf\teval_fasta\tprimers"]
-            for assem in all_assems[method]:
-                if method == 0:
-                    outdir = os.path.join(output[0], "ART_assemblies")
-                else:
-                    outdir = os.path.join(output[0], "Badread_assemblies")
-                vcf_file = os.path.join(input[2], os.path.basename(assem), "04.truth.vcf")
-                manifest.append(os.path.basename(assem) + "\t" + vcf_file + "\t" + os.path.join(assem, "consensus.fa") + "\t" + scheme)
-            # save metadata as tsv file
-            with open(os.path.join(outdir, "manifest.tsv"), "w") as manifestOut:
-                manifestOut.write("\n".join(manifest))
-            # run covid-truth-eval
-            shell_command = "singularity run " + params.container_dir + "/covid-truth-eval/cte.img eval_runs \
-                --outdir " + os.path.join(outdir, "OUT") + " " + os.path.join(outdir, "manifest.tsv")
-            shell(shell_command)
+        # run covid truth eval
+        run_cte(params.primer_scheme,
+                art_assemblies,
+                badread_assemblies,
+                output[0],
+                input[2],
+                params.container_dir)
 
+rule artic_covid_truth_eval:
+    input:
+        reference_genome=config["reference_genome"],
+        artic_assemblies=rules.artic_assemble.output,
+        truth_vcf=rules.truth_vcfs.output,
+    output:
+        directory("cte_artic_output")
+    threads:
+        config["threads"]
+    params:
+        container_dir=config["container_directory"],
+        primer_scheme=config["primer_scheme"]
+    run:
+       # make output dirs
+        for sub_dir in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
+            if not os.path.exists(sub_dir):
+                os.mkdir(sub_dir)
+        # list viridian assemblies
+        art_assemblies = glob.glob(os.path.join(input[1], "ART_assemblies", "*"))
+        badread_assemblies = glob.glob(os.path.join(input[1], "Badread_assemblies", "*"))
+        # run covid truth eval
+        run_cte(params.primer_scheme,
+                art_assemblies,
+                badread_assemblies,
+                output[0],
+                input[2],
+                params.container_dir)
+        
 rule assess_assemblies:
     input:
         viridian_assemblies=rules.run_viridian.output,
@@ -470,7 +527,7 @@ rule assess_assemblies:
         reference_genome=config["reference_genome"],
         truth_vcf=rules.truth_vcfs.output,
         split_amplicons=rules.split_amplicons.output,
-        covid_truth_eval=rules.covid_truth_eval.output
+        viridian_covid_truth_eval=rules.viridian_covid_truth_eval.output
     params:
         container_dir=config["container_directory"],
         scheme=config['primer_scheme']
@@ -663,11 +720,20 @@ rule build_simulated_phylogeny:
                 optimise_phylogeny(tree_file,
                                     threads)
 
+rule build_artic_phylogeny:
+    input:
+        simulated_assemblies=rules.mask_assemblies.output,
+        viridian_assemblies=rules.run_viridian.output,
+    output:
+        directory("artic_phylogenies")
+    shell:
+        ""
 
 rule compare_phylogenies:
     input:
         viridian_phylogeny=rules.build_viridian_phylogeny.output,
-        simulated_phylogeny=rules.build_simulated_phylogeny.output
+        simulated_phylogeny=rules.build_simulated_phylogeny.output,
+        artic_phylogeny=rules.build_artic_phylogeny.output
     output:
         directory("phylogeny_comparisons")
     threads:

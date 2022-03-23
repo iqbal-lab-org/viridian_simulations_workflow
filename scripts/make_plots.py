@@ -11,6 +11,39 @@ from statistics import mean
 import subprocess
 from tqdm import tqdm
 
+def run_cte(primer_scheme,
+            art_assemblies,
+            badread_assemblies,
+            output,
+            truth_vcf_dir,
+            container_dir):
+    """run covid-truth-eval"""
+    # define the primer scheme
+    if primer_scheme == "V3":
+        scheme = "COVID-ARTIC-V3"
+    if primer_scheme == "V4":
+        scheme = "COVID-ARTIC-V4"
+    if primer_scheme == "V4.1":
+        scheme = "COVID-MIDNIGHT-1200"
+    # iterate through assemblies
+    all_assems = [art_assemblies, badread_assemblies]
+    for method in range(len(all_assems)):
+        manifest = ["name\ttruth_vcf\teval_fasta\tprimers"]
+        for assem in all_assems[method]:
+            if method == 0:
+                outdir = os.path.join(output, "ART_assemblies")
+            else:
+                outdir = os.path.join(output, "Badread_assemblies")
+            vcf_file = os.path.join(truth_vcf_dir, os.path.basename(assem), "04.truth.vcf")
+            manifest.append(os.path.basename(assem) + "\t" + vcf_file + "\t" + os.path.join(assem, "consensus.fa") + "\t" + scheme)
+        # save metadata as tsv file
+        with open(os.path.join(outdir, "manifest.tsv"), "w") as manifestOut:
+            manifestOut.write("\n".join(manifest))
+        # run covid-truth-eval
+        shell_command = "singularity run " + container_dir + "/covid-truth-eval/cte.img eval_runs \
+            --outdir " + os.path.join(outdir, "OUT") + " " + os.path.join(outdir, "manifest.tsv")
+        subprocess.run(shell_command, shell=True, check=True)
+
 def run_varifier(assembly,
                 truth_vcf_dir,
                 reference_genome,
