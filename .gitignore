@@ -180,6 +180,10 @@ simulated_phylogenies
 phylogeny_comparisons
 cte_output
 artic_assemblies
+artic_phylogenies
+artic_vcfs
+cte_artic_output
+cte_viridian_output
 
 # singularity containers
 singularity/images/*
