@@ -5,7 +5,7 @@ proportion_illumina: 0.90
 primer_scheme: V4
 primer_scheme_dir: https://github.com/artic-network/primer-schemes
 seed: 2022
-container_directory: ~/Documents/GitHub/viridian_simulations_workflow/singularity
+container_directory: singularity
 
 VGsim:
   rate_file: VGsim_params/rate_file.rt

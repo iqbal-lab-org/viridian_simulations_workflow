@@ -27,24 +27,24 @@ python3 singularity/build_images.py
 # Configuration
 
 ## General
-* ```processes```: Number of threads to extract amplicon sequences and run ART_illumina.
+* ```threads```: Number of threads to extract amplicon sequences and run ART_illumina.
 * ```reference_genome```: A SARS-CoV-2 reference genome for simulations and read mapping.
-* ```divide_genomes```: Randomly assign genomes to simulate illumina or nanopore reads byt proportion.
+* ```divide_genomes```: Randomly assign genomes to simulate illumina or nanopore reads by proportion.
 * ```proportion_illumina```: Proportion of total number of simulated genomes that will become simulated illumina reads. The remaining fraction become Nanopore simulated reads. Required for ```divide_genomes=True```.
 * ```primer_scheme```: The artic nCoV-2019 primer scheme (V3, V4 or V4.1).
+* ```primer_scheme_dir```: GitHub repository of primer schemes for the artic assembly pipeline (usually https://github.com/artic-network/primer-schemes).
+* ```seed```: Start seed.
 
 ## VGsim:
 * ```rate_file```: A file specifying per haplotype birth, death, sampling and migration rates
 * ```iterations```: Maximum number of iterations to run the model.
 * ```pp_population_model_file```: File specifying number, population size and contact rates of host populations to model.
 * ```mg_population_model_file```: File containing matrix of contact rates between the modelled host populations.
-* ```seed```: Start seed.
 * ```sample_size```: Number of SARS-CoV-2 samples to draw before terminating the simulation.
 
 ## phastSim:
 * ```tree_file```: Newick tree of SARS-CoV-2 simulated genomes.
 * ```output_dir```: Output directory name for phastSim
-* ```seed```: Start seed.
 
 ## split_amplicons:
 * ```random_dropout_probability```: Probability of random dropout of amplicons to simulate PCR errors.
@@ -59,6 +59,12 @@ python3 singularity/build_images.py
 
 ## mask_assemblies:
 * ```apply_mask```: Mask low coverage bases in the simulated truth genomes.
+
+## artic_assemble
+* ```nextflow_path```: Path to nextflow installation.
+
+## build_simulated_phylogeny, build_viridian_phylogeny, build_artic_phylogeny
+* ```bach_size```: Number of samples to add to the phylogeny with UshER before running matOptimize.
 
 # Testing
 
