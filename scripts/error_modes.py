@@ -440,7 +440,7 @@ def main():
     args = get_options()
     # import correct primers for primer scheme
     primer_df, pool1_primers, pool2_primers = find_primer_scheme(args.primer_scheme,
-                                                                 args.scheme_dir)
+                                                                 "primer_schemes")
     # create output directory
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)

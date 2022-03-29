@@ -22,7 +22,7 @@ python3 singularity/build_images.py
 
 # Usage
 
-```snakemake --cores 1 assess_assemblies```
+```snakemake --cores 1```
 
 # Configuration
 

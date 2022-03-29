@@ -10,9 +10,14 @@ from tqdm import tqdm
 
 from scripts.error_modes import clean_genome, find_primer_scheme
 from scripts.phylogenies import combine_vcfs, initiate_phylogeny, add_samples, optimise_phylogeny
-from scripts.make_plots import run_cte, run_varifier, generate_plots, generate_heatmap
+from scripts.make_plots import run_cte, run_varifier, generate_plots, generate_heatmap, plot_varifier_calls
 
 configfile: 'config.yml'
+
+rule all:
+    input:
+        "phylogeny_comparisons",
+        "varifier_statistics"
 
 rule VGsim_tree:
     input:
@@ -45,7 +50,7 @@ rule phastSim_evolution:
         'mkdir {output} && singularity run {params.container_dir}/images/phastSim.img --outpath {output}/ --seed {params.seed} --createFasta \
                 --createInfo --createNewick --createPhylip --treeFile {input.tree_file} \
                 --invariable 0.1 --alpha 0.0002 --omegaAlpha 0.0002 --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 --codon \
-                --reference {input.reference_genome} --createMAT'
+                --reference {input.reference_genome} --createMAT --indels'
 
 rule split_sequences:
     input:
@@ -393,6 +398,8 @@ rule artic_assemble:
     params:
         scheme_dir=config["primer_scheme_dir"],
         primer_scheme=config['primer_scheme'],
+        illumina_container=config["artic_assemble"]["illumina_workflow_container"],
+        nanopore_container=config["artic_assemble"]["nanopore_workflow_container"],
         container_dir=config["container_directory"],
         nextflow_path=config["artic_assemble"]["nextflow_path"]
     run:
@@ -448,7 +455,7 @@ rule artic_assemble:
         for subset in tqdm(subsetted_art):
             Parallel(n_jobs=job_threads, prefer="threads")(delayed(illumina_artic_assemble)(read,
                                                                                             read.replace("_1.fastq", "_2.fastq"),
-                                                                                            os.path.join(params.container_dir, "ncov2019-artic-nf", "artic-ncov2019-illumina.20210408.8af5152cf7.sif"),
+                                                                                            params.illumina_container,
                                                                                             os.path.join(params.container_dir, "ncov2019-artic-nf", "main.nf"),
                                                                                             params.scheme_dir,
                                                                                             os.path.join(output[0], "ART_assemblies", os.path.basename(read).replace("_1.fastq", "")),
@@ -456,12 +463,74 @@ rule artic_assemble:
                                                                                             params.primer_scheme) for read in subset)
         for subset in tqdm(subsetted_badread):
             Parallel(n_jobs=job_threads, prefer="threads")(delayed(nanopore_artic_assemble)(read,
-                                                                                            os.path.join(params.container_dir, "ncov2019-artic-nf", "artic-ncov2019-nanopore.20210408.8af5152cf7.sif"),
+                                                                                            params.nanopore_container,
                                                                                             os.path.join(params.container_dir, "ncov2019-artic-nf", "main.nf"),
                                                                                             params.scheme_dir,
                                                                                             os.path.join(output[0], "Badread_assemblies", os.path.basename(read).replace(".fastq", "")),
                                                                                             params.nextflow_path,
                                                                                             params.primer_scheme) for read in subset)
+
+
+rule make_artic_vcf:
+    input:
+        artic_assemblies=rules.artic_assemble.output,
+        reference_genome=config["reference_genome"],
+        amplicon_sequences=rules.split_amplicons.output
+    output:
+        directory("artic_vcfs")
+    params:
+        container_dir=config["container_directory"]
+    threads:
+        config['threads']
+    run:
+        def run_artic_varifier(assembly,
+                                covered,
+                                reference,
+                                output_dir,
+                                container_dir):
+            """Run varifier make_truth_vcf on the masked assemblies"""
+            covered_start = covered["start"]
+            covered_end = covered["end"]
+            varifier_command = "singularity run " + container_dir + "/varifier/varifier.img make_truth_vcf --global_align "
+            #varifier_command = 'singularity exec "docker://quay.io/iqballab/varifier" varifier make_truth_vcf --global_align '
+            varifier_command += "--global_align_min_coord " + covered_start + " --global_align_max_coord " + covered_end
+            varifier_command += " " + os.path.join(assembly, "consensus.fa") + " " + reference + " " + output_dir
+            shell(varifier_command)
+
+        # make directory
+        for subdir in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
+            if not os.path.exists(subdir):
+                os.mkdir(subdir)
+        # load list of assemblies
+        art_assemblies = glob.glob(os.path.join(input[0], "ART_assemblies", "*"))
+        badread_assemblies = glob.glob(os.path.join(input[0], "Badread_assemblies", "*"))
+        # import the amplicon statistics file to extract what parts of the assembly are covered by amplicons
+        with open(os.path.join(input[2], 'amplicon_statistics.pickle'), 'rb') as statIn:
+            amplicon_stats = pickle.load(statIn)
+        regions_covered = {}
+        for sample in amplicon_stats:
+            amplicons = list(amplicon_stats[sample].keys())
+            regions_covered[sample] = {"start": str(amplicon_stats[sample][amplicons[0]]["amplicon_start"]),
+                                       "end": str(amplicon_stats[sample][amplicons[len(amplicons)-1]]["amplicon_end"])}
+        # parallelise make_truth_vcf
+        subsetted_art_assemblies = [
+            art_assemblies[i:i + threads] for i in range(0, len(art_assemblies), threads)
+        ]
+        for subset in subsetted_art_assemblies:
+            Parallel(n_jobs=threads, prefer="threads")(delayed(run_artic_varifier)(sample,
+                                                                                regions_covered[os.path.basename(sample)],
+                                                                                input[1],
+                                                                                os.path.join(output[0], "ART_assemblies", os.path.basename(sample)),
+                                                                                params.container_dir) for sample in subset)
+        subsetted_badread_assemblies = [
+            badread_assemblies[i:i + threads] for i in range(0, len(badread_assemblies), threads)
+        ]
+        for subset in subsetted_badread_assemblies:
+            Parallel(n_jobs=threads, prefer="threads")(delayed(run_artic_varifier)(sample,
+                                                                                regions_covered[os.path.basename(sample)],
+                                                                                input[1],
+                                                                                os.path.join(output[0], "Badread_assemblies", os.path.basename(sample)),
+                                                                                params.container_dir) for sample in subset)
 
 rule viridian_covid_truth_eval:
     input:
@@ -534,7 +603,9 @@ rule assess_assemblies:
         reference_genome=config["reference_genome"],
         truth_vcf=rules.truth_vcfs.output,
         split_amplicons=rules.split_amplicons.output,
-        viridian_covid_truth_eval=rules.viridian_covid_truth_eval.output
+        viridian_covid_truth_eval=rules.viridian_covid_truth_eval.output,
+        artic_vcfs=rules.make_artic_vcf.output,
+        artic_assemblies=rules.artic_assemble.output
     params:
         container_dir=config["container_directory"],
         scheme=config['primer_scheme']
@@ -543,7 +614,9 @@ rule assess_assemblies:
     output:
         directory('varifier_statistics')
     run:
-        directories = [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]
+        directories = [output[0], os.path.join(output[0], "viridian_assemblies"), os.path.join(output[0], "artic_assemblies"), \
+            os.path.join(output[0], "viridian_assemblies", "ART_assemblies"), os.path.join(output[0], "viridian_assemblies", "Badread_assemblies"), \
+            os.path.join(output[0], "artic_assemblies", "ART_assemblies"), os.path.join(output[0], "artic_assemblies", "Badread_assemblies")]
         if not os.path.exists(output[0]):
             for folder in directories:
                 os.mkdir(folder)
@@ -553,27 +626,55 @@ rule assess_assemblies:
         with open(os.path.join(input[4], 'amplicon_statistics.pickle'), 'rb') as statIn:
             amplicon_stats = pickle.load(statIn)
         # iterate through assemblies, run varifier and generate plots 
-        generate_plots(art_assemblies,
-                        amplicon_stats,
-                        input[3],
-                        input[2],
-                        input[1],
-                        "ART",
-                        threads,
-                        output[0],
-                        params.container_dir)
-        generate_plots(badread_assemblies,
-                        amplicon_stats,
-                        input[3],
-                        input[2],
-                        input[1],
-                        "Badread",
-                        threads,
-                        output[0],
-                        params.container_dir)
+        viridian_art_snps = generate_plots(art_assemblies,
+                                        amplicon_stats,
+                                        input[3],
+                                        input[2],
+                                        input[1],
+                                        "ART",
+                                        threads,
+                                        output[0],
+                                        params.container_dir)
+        viridian_badread_snps = generate_plots(badread_assemblies,
+                                            amplicon_stats,
+                                            input[3],
+                                            input[2],
+                                            input[1],
+                                            "Badread",
+                                            threads,
+                                            output[0],
+                                            params.container_dir)
         # generate plot for results of covid truth eval output
-        generate_heatmap(os.path.join(input[5], "ART_assemblies", "OUT", "processing"), "ART", output[0])
-        generate_heatmap(os.path.join(input[5], "Badread_assemblies", "OUT", "processing"), "Badread", output[0])
+        #generate_heatmap(os.path.join(input[5], "ART_assemblies", "OUT", "Processing"), "ART", output[0])
+        #generate_heatmap(os.path.join(input[5], "Badread_assemblies", "OUT", "Processing"), "Badread", output[0])
+        # generate plots for the artic assemblies
+        artic_art_assemblies = glob.glob(input[7] + '/ART_assemblies/*')
+        artic_badread_assemblies = glob.glob(input[7] + '/Badread_assemblies/*')
+        artic_art_snps = generate_plots(artic_art_assemblies,
+                                            amplicon_stats,
+                                            input[3],
+                                            input[2],
+                                            input[1],
+                                            "artic_ART",
+                                            threads,
+                                            output[0],
+                                            params.container_dir,
+                                            input[6],
+                                            os.path.join(input[0], "ART_assemblies"))
+        #artic_badread_snps = generate_plots(artic_badread_assemblies,
+                            #               amplicon_stats,
+                            #              input[3],
+                            #             input[2],
+                                #            input[1],
+                                #           "ART",
+                                #          threads,
+                                #         output[0],
+                                    #        params.container_dir)
+        # let's see what happens if we assess SNPs called by the assemblers instead of truth SNPs
+        plot_varifier_calls(viridian_art_snps,
+                            viridian_badread_snps,
+                            artic_art_snps,
+                            output[0])
 
 rule build_viridian_phylogeny:
     input:

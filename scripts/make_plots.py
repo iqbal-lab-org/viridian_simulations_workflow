@@ -2,6 +2,7 @@ import glob
 from joblib import Parallel, delayed
 import json
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 import numpy as np
 import os
 import pandas as pd
@@ -42,12 +43,17 @@ def run_varifier(assembly,
                 reference_genome,
                 simulated_genomes,
                 output,
-                container_dir):
+                container_dir,
+                artic_vcf_dir=None):
     """Run varifier on viridian assembly to verify SNP calls"""
-    vcf_file = os.path.join(assembly, "variants.vcf")
+    if not artic_vcf_dir:
+        vcf_file = os.path.join(assembly, "variants.vcf")
+        output_dir = os.path.join(output, "viridian_assemblies", os.path.join(assembly.split("/")[-2], os.path.basename(assembly)))
+    else:
+        vcf_file = os.path.join(artic_vcf_dir, "/".join(assembly.split("/")[-2:]), "04.truth.vcf")
+        output_dir = os.path.join(output, "artic_assemblies", os.path.join(assembly.split("/")[-2], os.path.basename(assembly)))
     truth_vcf = os.path.join(truth_vcf_dir, os.path.basename(assembly), "04.truth.vcf")
     truth_genome = os.path.join(simulated_genomes, os.path.basename(assembly) + ".fasta")
-    output_dir = os.path.join(output, os.path.join(assembly.split("/")[-2], os.path.basename(assembly)))
     varifier_command = "singularity run " + container_dir + "/varifier/varifier.img vcf_eval --truth_vcf " + truth_vcf + " "
     # varifier_command = 'singularity exec "docker://quay.io/iqballab/varifier" varifier vcf_eval --truth_vcf ' + truth_vcf + ' '
     varifier_command += truth_genome + " " + reference_genome + " " + vcf_file + " " + output_dir
@@ -61,7 +67,9 @@ def generate_plots(assembly_list,
                     source,
                     threads,
                     output,
-                    container_dir):
+                    container_dir,
+                    artic_vcf_dir=None,
+                    viridian_assembly_dir=None):
     """Generate summary plots for the viridian assemblies"""
     # store snp positions and whether it was correctly identifed
     plot_dict = {}
@@ -76,29 +84,44 @@ def generate_plots(assembly_list,
                                                                         reference_genome,
                                                                         simulated_genomes,
                                                                         output,
-                                                                        container_dir) for assem in subset)
+                                                                        container_dir,
+                                                                        artic_vcf_dir) for assem in subset)
+    if not artic_vcf_dir:
+        method_dir = "viridian_assemblies"
+    else:
+        method_dir = "artic_assemblies"
+    # collect all snp calls
+    all_snp_calls = {}
     # iterate through assemblies
     for assembly in assembly_list:
-        output_dir = os.path.join(output, os.path.join(assembly.split("/")[-2], os.path.basename(assembly)))
+        output_dir = os.path.join(output, method_dir, os.path.join(assembly.split("/")[-2], os.path.basename(assembly)))
         # import truth vcf
         truth_vcf_in = pysam.VariantFile(os.path.join(output_dir, "recall", "recall.vcf"))
         truth_records = truth_vcf_in.fetch()
         truth_positions = []
+        truth_snps = []
         for record in truth_records:
             truth_positions.append(int(record.pos))
+            truth_snps.append(record.alts)
         # import varified vcf
         varifier_vcf_in = pysam.VariantFile(os.path.join(output_dir, "variants_to_eval.filtered.vcf"))
         varifier_records = varifier_vcf_in.fetch()
         varified_positions = []
+        varified_snps = []
         for record in varifier_records:
             varified_positions.append(int(record.pos))
+            varified_snps.append(record.alts)
         # extract samples error modes
         sample_stats = amplicon_stats[os.path.basename(assembly)]
         amplicon_region = []
         error = []
         # import viridian summary stats to make amplicon starts and ends relative to the reference sequence
-        with open(os.path.join(assembly, "log.json")) as inJson:
-            summary = json.loads(inJson.read())["read_sampling"]
+        if not viridian_assembly_dir:
+            with open(os.path.join(assembly, "log.json")) as inJson:
+                summary = json.loads(inJson.read())["read_sampling"]
+        else:
+            with open(os.path.join(viridian_assembly_dir, os.path.basename(assembly), "log.json")) as inJson:
+                summary = json.loads(inJson.read())["read_sampling"]
         for amplicon in list(sample_stats.keys()):
             # make amplicon start and ends relative to ref
             amplicon_region.append((summary[amplicon.split("_LEFT")[0]]["start"]-1, summary[amplicon.split("_LEFT")[0]]["end"]))
@@ -109,7 +132,7 @@ def generate_plots(assembly_list,
                 error.append(False)
         regions_seen = []
         # see which varified SNPs are missing
-        for position in truth_positions:
+        for position in range(len(truth_positions)):
             # make position relative to the length of the amplicon
             for region in range(len(amplicon_region)):
                 error_mode = error[region]
@@ -124,29 +147,31 @@ def generate_plots(assembly_list,
                         error_mode = "neighbour_random_dropout"
                     else:
                         error_mode = "no_error"
-                if not (position, error_mode) in regions_seen:
-                    if position <= amplicon_region[region][1] and position >= amplicon_region[region][0]:
+                if not (truth_positions[position], error_mode) in regions_seen:
+                    if truth_positions[position] <= amplicon_region[region][1] and truth_positions[position] >= amplicon_region[region][0]:
                         # want to look at position calls across all samples
                         # intiate plot dictionary
                         if not error_mode in plot_dict:
                             plot_dict[error_mode] = {}
                             plot_dict[error_mode]["positions"] = {}
-                        if not position in plot_dict[error_mode]["positions"]:
-                            plot_dict[error_mode]["positions"][position] = {"calls": []}
+                        if not truth_positions[position] in plot_dict[error_mode]["positions"]:
+                            plot_dict[error_mode]["positions"][truth_positions[position]] = {"calls": []}
                         # want to make plots of calls across the amplicon lengths too
-                        percentage = round((position - amplicon_region[region][0])*100/(amplicon_region[region][1]-amplicon_region[region][0]), 2)
+                        percentage = round((truth_positions[position] - amplicon_region[region][0])*100/(amplicon_region[region][1]-amplicon_region[region][0]), 2)
                         if not error_mode in percentage_dict:
                             percentage_dict[error_mode] = {}
                             percentage_dict[error_mode]["positions"] = {}
                         if not percentage in percentage_dict[error_mode]["positions"]:
                             percentage_dict[error_mode]["positions"][percentage] = {"calls": []}
-                        if position in varified_positions:
-                            plot_dict[error_mode]["positions"][position]["calls"].append(1)
+                        if truth_positions[position] in varified_positions and truth_snps[position][0] == varified_snps[varified_positions.index(truth_positions[position])][0]:
+                            plot_dict[error_mode]["positions"][truth_positions[position]]["calls"].append(1)
                             percentage_dict[error_mode]["positions"][percentage]["calls"].append(1)
                         else:
-                            plot_dict[error_mode]["positions"][position]["calls"].append(0)
+                            plot_dict[error_mode]["positions"][truth_positions[position]]["calls"].append(0)
                             percentage_dict[error_mode]["positions"][percentage]["calls"].append(0)
-                        regions_seen.append((position, error_mode))
+                        regions_seen.append((truth_positions[position], error_mode))
+        all_snp_calls[os.path.basename(assembly)] = {"truth_snp_positions": truth_positions, "truth_snp_calls": truth_snps, "varifier_snp_positions": varified_positions, "varifier_snp_calls": varified_snps}
+
     # add colours to the plot dict
     for to_plot in [plot_dict, percentage_dict]:
         if "primer_dimer" in to_plot:
@@ -191,7 +216,7 @@ def generate_plots(assembly_list,
         ax.set_ylim([-1.1, 1.1])
         ticks =  ax.get_yticks()
         ax.set_yticklabels([abs(tick) for tick in ticks])
-        plt.savefig(os.path.join(output, source + "_" + error + "_SNP_positions.pdf"))
+        plt.savefig(os.path.join(output, source + "_" + error + "_SNP_positions.png"), dpi=300)
 
     for error in tqdm(percentage_dict):
         percentages = []
@@ -212,12 +237,12 @@ def generate_plots(assembly_list,
         ax.set_ylim([-1.1, 1.1])
         ticks =  ax.get_yticks()
         ax.set_yticklabels([abs(tick) for tick in ticks])
-        plt.savefig(os.path.join(output, source + "_" + error + "_percentage_SNP_positions.pdf"))
+        plt.savefig(os.path.join(output, source + "_" + error + "_percentage_SNP_positions.png"), dpi=300)
+    return all_snp_calls
 
 def generate_heatmap(eval_dir, method, output_dir):
     """Generate heatmap of viridian assembly SNPs vs ref"""
     cte_files = glob.glob(os.path.join(eval_dir, "*"))
-    print(cte_files)
     call_dict = {}
     for subdir in tqdm(cte_files):
         per_position = pd.read_csv(os.path.join(subdir, "per_position.tsv"), sep='\t')
@@ -225,7 +250,6 @@ def generate_heatmap(eval_dir, method, output_dir):
             if not per_position["Ref_pos"][pos] in call_dict:
                 call_dict[per_position["Ref_pos"][pos]] = []
             else:
-                #if any(per_position["Consensus_category"][pos] == cat for cat in ["Called_ref", "Called_correct_alt", "Called_correct_IUPAC"]):
                 call = 1
                 if any(per_position["Consensus_category"][pos] == cat for cat in ["Called_wrong_alt", "Called_wrong_IUPAC", "Called_wrong_indel", "Called_N"]):
                     call = 0
@@ -241,4 +265,69 @@ def generate_heatmap(eval_dir, method, output_dir):
     fig, ax = plt.subplots()
     #hm = sns.heatmap(heat_matrix, cbar=True, cmap="plasma", fmt='.2f', square=True, xticklabels=False, yticklabels=False)
     plt.plot(positions, heat_values)
-    plt.savefig(os.path.join(output_dir, method + "_covid_truth_eval_heatmap.pdf"))
+    plt.savefig(os.path.join(output_dir, method + "_covid_truth_eval_heatmap.png"), dpi=300)
+
+def plot_varifier_calls(viridian_art_snps,
+                        viridian_badread_snps,
+                        artic_art_snps,
+                        output_dir,
+                        artic_badread_snps=None):
+    """Plot the union of snp calls"""
+    # iterate through call set
+    all_sets = [viridian_art_snps, viridian_badread_snps, artic_art_snps]#, artic_badread_snps]
+    all_call_dict = {}
+    all_calls_union = []
+    for calls in range(len(all_sets)):
+        call_source = all_sets[calls]
+        call_by_base = {}
+        # iterate through samples
+        for sample in call_source:
+            calls_union = list(set(call_source[sample]["truth_snp_positions"]) | set(call_source[sample]["varifier_snp_positions"]))
+            calls_union.sort(key=int)
+            all_calls_union += calls_union
+            if not sample in call_by_base:
+                call_by_base[sample] = {}
+            for position in calls_union:
+                if not position in call_by_base[sample]:
+                    call_by_base[sample][position] = ""
+                if position in call_source[sample]["truth_snp_positions"] and position in call_source[sample]["varifier_snp_positions"]:
+                    if call_source[sample]["varifier_snp_calls"][call_source[sample]["varifier_snp_positions"].index(position)][0] == call_source[sample]["truth_snp_calls"][call_source[sample]["truth_snp_positions"].index(position)][0]:
+                        call_by_base[sample][position] = 1
+                    else:
+                        call_by_base[sample][position] = -1
+                else:
+                    call_by_base[sample][position] = -1
+        if calls == 0:
+            all_call_dict["viridian_ART_heatmap.png"] = call_by_base
+        elif calls == 1:
+            all_call_dict["viridian_Badread_heatmap.png"] = call_by_base
+        elif calls == 2:
+            all_call_dict["artic_ART_heatmap.png"] = call_by_base
+        else:
+            all_call_dict["artic_Badread_heatmap.png"] = call_by_base
+    
+    # make sure all samples have a value for all bases
+    all_calls_union = list(set(all_calls_union))
+    all_calls_union.sort(key=int)
+    for key in all_call_dict:
+        heat_matrix = []
+        for samp in all_call_dict[key]:
+            heat_values = []
+            for pos in all_calls_union:
+                if not pos in all_call_dict[key][samp].keys():
+                    heat_values.append(0)
+                else:
+                    heat_values.append(all_call_dict[key][samp][pos])
+            heat_matrix.append(heat_values)
+        # plot the values
+        heat_matrix = np.matrix(heat_matrix)
+        fig, ax = plt.subplots()
+        myColors = ("r", "w", "b")
+        cmap = LinearSegmentedColormap.from_list('Custom', myColors, len(myColors))
+        hm = sns.heatmap(heat_matrix, cbar=False, cmap=cmap, vmin=-0.5, vmax=0.5, fmt='.2f', square=True, xticklabels=False, yticklabels=False)
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, key), dpi=300)
+    # make heatmap comparing artic and viridian
+   # for method in ["ART", "Badread"]:
+    #    viridian_calls = all_call_dict["viridian_" + method + "_heatmap.png"]
+     #   artic_calls = all_call_dict["artic_" + method + "_heatmap.png"]
