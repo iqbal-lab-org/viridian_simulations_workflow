@@ -5,12 +5,11 @@ import os
 import pickle
 import random
 import shutil
-import tempfile
 from tqdm import tqdm
 
 from scripts.error_modes import clean_genome, find_primer_scheme
 from scripts.phylogenies import combine_vcfs, initiate_phylogeny, add_samples, optimise_phylogeny
-from scripts.make_plots import run_cte, run_varifier, generate_plots, generate_heatmap, plot_varifier_calls
+from scripts.make_plots import run_cte, run_varifier, generate_plots, generate_heatmap, plot_varifier_calls, pairwise_compare
 
 configfile: 'config.yml'
 
@@ -305,8 +304,10 @@ rule mask_assemblies:
         if not os.path.exists(output[0]):
             os.mkdir(output[0])
         # if mask sequences off then just copy the unmasked sequences
-        if not params.mask_assemblies:
-            shell("cp -a /" + input[0] + "/. /" + output[0] + "/")
+        if not params.mask_assemblies == "True":
+            genomes = glob.glob(os.path.join(input[0], "*.fasta"))
+            for g in genomes:
+                shell("cp " + g + " " + output[0])
         else:
             # import the amplicon statistics file to see which amplicons to mask
             with open(os.path.join(input[1], 'amplicon_statistics.pickle'), 'rb') as statIn:
@@ -605,7 +606,8 @@ rule assess_assemblies:
         split_amplicons=rules.split_amplicons.output,
         viridian_covid_truth_eval=rules.viridian_covid_truth_eval.output,
         artic_vcfs=rules.make_artic_vcf.output,
-        artic_assemblies=rules.artic_assemble.output
+        artic_assemblies=rules.artic_assemble.output,
+        unmasked_geomes=rules.split_sequences.output
     params:
         container_dir=config["container_directory"],
         scheme=config['primer_scheme']
@@ -661,20 +663,34 @@ rule assess_assemblies:
                                             params.container_dir,
                                             input[6],
                                             os.path.join(input[0], "ART_assemblies"))
-        #artic_badread_snps = generate_plots(artic_badread_assemblies,
-                            #               amplicon_stats,
-                            #              input[3],
-                            #             input[2],
-                                #            input[1],
-                                #           "ART",
-                                #          threads,
-                                #         output[0],
-                                    #        params.container_dir)
+        artic_badread_snps = generate_plots(artic_badread_assemblies,
+                                            amplicon_stats,
+                                            input[3],
+                                            input[2],
+                                            input[1],
+                                            "ART",
+                                            threads,
+                                            output[0],
+                                            params.container_dir)
         # let's see what happens if we assess SNPs called by the assemblers instead of truth SNPs
         plot_varifier_calls(viridian_art_snps,
                             viridian_badread_snps,
                             artic_art_snps,
                             output[0])
+        # generate matrices of pairwise SNP comparisons in viridian vs artic assemblies
+        pairwise_compare(art_assemblies,
+                         os.path.join(input[7], "ART_assemblies"),
+                         output[0],
+                         "viridian_artic")
+        pairwise_compare(artic_art_assemblies,
+                         input[8],
+                         output[0],
+                         "artic_simulated")
+        pairwise_compare(art_assemblies,
+                         input[8],
+                         output[0],
+                         "viridian_simulated")
+
 
 rule build_viridian_phylogeny:
     input:
@@ -711,7 +727,7 @@ rule build_viridian_phylogeny:
             # make vcf files to add in batches
             file_no = 0
             batched_files = [
-                method[1:][i:i + params.batch_size] for i in range(0, len(method[1:]), params.batch_size)
+                method[i:i + params.batch_size] for i in range(0, len(method), params.batch_size)
             ]
             out_vcfs = []
             for batch in tqdm(batched_files):
@@ -728,7 +744,8 @@ rule build_viridian_phylogeny:
                                                          input[0],
                                                          vcf_dir,
                                                          "viridian",
-                                                         output[0])
+                                                         output[0],
+                                                         input[1])
             else:
                 vcf_dir = os.path.join(input[0], "Badread_assemblies")
                 tree_dir, tree_file = initiate_phylogeny("Badread",
@@ -736,7 +753,8 @@ rule build_viridian_phylogeny:
                                                          input[0],
                                                          vcf_dir,
                                                          "viridian",
-                                                         output[0])
+                                                         output[0],
+                                                         input[1])
             for combined in out_vcfs:
                 # add the samples to the phylogeny in batches
                 add_samples(combined,
@@ -751,7 +769,8 @@ rule build_simulated_phylogeny:
     input:
         simulated_assemblies=rules.mask_assemblies.output,
         viridian_assemblies=rules.run_viridian.output,
-        truth_vcfs=rules.truth_vcfs.output
+        truth_vcfs=rules.truth_vcfs.output,
+        reference_genome=config["reference_genome"]
     output:
         directory("simulated_phylogenies")
     threads:
@@ -792,7 +811,7 @@ rule build_simulated_phylogeny:
             # make vcf files to add in batches
             file_no = 0
             batched_files = [
-                method[1:][i:i + params.batch_size] for i in range(0, len(method[1:]), params.batch_size)
+                method[i:i + params.batch_size] for i in range(0, len(method), params.batch_size)
             ]
             out_vcfs = []
             for batch in tqdm(batched_files):
@@ -810,14 +829,16 @@ rule build_simulated_phylogeny:
                                                          input[0],
                                                          vcf_dir,
                                                          "simulated",
-                                                         output[0])
+                                                         output[0],
+                                                         input[3])
             else:
                 tree_dir, tree_file = initiate_phylogeny("Badread",
                                                          method,
                                                          input[0],
                                                          vcf_dir,
                                                          "simulated",
-                                                         output[0])
+                                                         output[0],
+                                                         input[3])
             for combined in out_vcfs:
                 # add the samples to the phylogeny in batches
                 add_samples(combined,
@@ -894,7 +915,8 @@ rule build_artic_phylogeny:
     input:
         simulated_assemblies=rules.mask_assemblies.output,
         viridian_assemblies=rules.run_viridian.output,
-        artic_vcfs=rules.make_artic_vcfs.output
+        artic_vcfs=rules.make_artic_vcfs.output,
+        reference_genome=config["reference_genome"]
     output:
         directory("artic_phylogenies")
     threads:
@@ -937,7 +959,7 @@ rule build_artic_phylogeny:
             # make vcf files to add in batches
             file_no = 0
             batched_files = [
-                in_files[1:][i:i + params.batch_size] for i in range(0, len(in_files[1:]), params.batch_size)
+                in_files[i:i + params.batch_size] for i in range(0, len(in_files), params.batch_size)
             ]
             out_vcfs = []
             for batch in tqdm(batched_files):
@@ -955,14 +977,16 @@ rule build_artic_phylogeny:
                                                          input[0],
                                                          vcf_dir,
                                                          "artic",
-                                                         output[0])
+                                                         output[0],
+                                                         input[3])
             else:
                 tree_dir, tree_file = initiate_phylogeny("Badread",
                                                          in_files,
                                                          input[0],
                                                          vcf_dir,
                                                          "artic",
-                                                         output[0])
+                                                         output[0],
+                                                         input[3])
             for combined in out_vcfs:
                 # add the samples to the phylogeny in batches
                 add_samples(combined,

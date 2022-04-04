@@ -4,5 +4,6 @@ numpy
 pandas
 pyfastaq
 pysam
+robinson-foulds
 snakemake
 tqdm

@@ -10,6 +10,7 @@ import pysam
 import seaborn as sns
 from statistics import mean
 import subprocess
+import tempfile
 from tqdm import tqdm
 
 def run_cte(primer_scheme,
@@ -96,7 +97,7 @@ def generate_plots(assembly_list,
     for assembly in assembly_list:
         output_dir = os.path.join(output, method_dir, os.path.join(assembly.split("/")[-2], os.path.basename(assembly)))
         # import truth vcf
-        truth_vcf_in = pysam.VariantFile(os.path.join(output_dir, "recall", "recall.vcf"))
+        truth_vcf_in = pysam.VariantFile(os.path.join(truth_vcf_dir, os.path.basename(assembly), "04.truth.vcf"))
         truth_records = truth_vcf_in.fetch()
         truth_positions = []
         truth_snps = []
@@ -195,23 +196,19 @@ def generate_plots(assembly_list,
     # generate plots
     plt.style.use('seaborn-whitegrid')
     for error in tqdm(plot_dict):
-        positions = []
-        calls = []
-        frequencies = []
+        position_call_dicts = []
+        position_frequency_dicts = []
         fig = plt.figure()
         ax = fig.add_subplot()
         for site in plot_dict[error]["positions"]:
-            positions.append(str(site))
-            calls.append(mean(plot_dict[error]["positions"][site]["calls"]))
-            frequencies.append(-len(plot_dict[error]["positions"][site]["calls"])/len(assembly_list))
-        ordered_positions = positions
-        ordered_positions.sort(key=int)
-        ordered_positions = [str(x) for x in positions]
-        ordered_calls = [calls[positions.index(i)] for i in ordered_positions]
-        ax.bar(ordered_positions, ordered_calls, color=plot_dict[error]["colour"])
+            position_call_dicts.append({str(site): mean(plot_dict[error]["positions"][site]["calls"])})
+            position_frequency_dicts.append({str(site): -len(plot_dict[error]["positions"][site]["calls"])/len(assembly_list)})
+        position_call_dicts = sorted(position_call_dicts, key=lambda x: int(list(x.keys())[0])) 
+        position_frequency_dicts = sorted(position_frequency_dicts, key=lambda x: int(list(x.keys())[0])) 
+        ax.bar([list(position.keys())[0] for position in position_call_dicts], [list(call.values())[0] for call in position_call_dicts], color=plot_dict[error]["colour"])
         # we also are adding the frequency of SNPs at each position below the bars
-        ax.bar(ordered_positions, frequencies, color="plum")
-        ax.set_xticklabels(ordered_positions, rotation=90, ha='right')
+        ax.bar([list(position.keys())[0] for position in position_call_dicts], [list(freq.values())[0] for freq in position_frequency_dicts], color="plum")
+        ax.set_xticklabels([list(position.keys())[0] for position in position_call_dicts], rotation=90, ha='right')
         ax.tick_params(axis='x', which='major', labelsize=5)
         ax.set_ylim([-1.1, 1.1])
         ticks =  ax.get_yticks()
@@ -219,20 +216,16 @@ def generate_plots(assembly_list,
         plt.savefig(os.path.join(output, source + "_" + error + "_SNP_positions.png"), dpi=300)
 
     for error in tqdm(percentage_dict):
-        percentages = []
-        calls = []
-        frequencies = []
+        percentage_call_dicts = []
+        percentage_frequency_dicts = []
         fig = plt.figure()
         ax = fig.add_subplot()
         for pos in percentage_dict[error]["positions"]:
-            percentages.append(int(pos))
-            calls.append(mean(percentage_dict[error]["positions"][pos]["calls"]))
-            frequencies.append(-len(percentage_dict[error]["positions"][pos]["calls"])/len(assembly_list))
-        #ordered_percentages = natsorted(percentages)
-        #ordered_calls = [calls[percentages.index(i)] for i in ordered_percentages]
-        ax.scatter(percentages, calls, s=10, color=percentage_dict[error]["colour"])
+            percentage_call_dicts.append({int(pos): mean(percentage_dict[error]["positions"][pos]["calls"])})
+            percentage_frequency_dicts.append({int(pos): -len(percentage_dict[error]["positions"][pos]["calls"])/len(assembly_list)})
+        ax.scatter([list(percentage.keys())[0] for percentage in percentage_call_dicts], [list(call.values())[0] for call in percentage_call_dicts], s=10, color=percentage_dict[error]["colour"])
         # we also are adding the frequency of SNPs at each position below the bars
-        ax.bar(percentages, frequencies, color="plum")
+        ax.bar([list(percentage.keys())[0] for percentage in percentage_call_dicts], [list(freq.values())[0] for freq in percentage_frequency_dicts], color="plum")
         ax.set_xlim([-0.1, 100.1])
         ax.set_ylim([-1.1, 1.1])
         ticks =  ax.get_yticks()
@@ -278,6 +271,7 @@ def plot_varifier_calls(viridian_art_snps,
     all_call_dict = {}
     all_calls_union = []
     for calls in range(len(all_sets)):
+        wrong = set()
         call_source = all_sets[calls]
         call_by_base = {}
         # iterate through samples
@@ -295,8 +289,11 @@ def plot_varifier_calls(viridian_art_snps,
                         call_by_base[sample][position] = 1
                     else:
                         call_by_base[sample][position] = -1
+                        wrong.add(position)
                 else:
                     call_by_base[sample][position] = -1
+                    wrong.add(position)
+        print(wrong)
         if calls == 0:
             all_call_dict["viridian_ART_heatmap.png"] = call_by_base
         elif calls == 1:
@@ -305,7 +302,6 @@ def plot_varifier_calls(viridian_art_snps,
             all_call_dict["artic_ART_heatmap.png"] = call_by_base
         else:
             all_call_dict["artic_Badread_heatmap.png"] = call_by_base
-    
     # make sure all samples have a value for all bases
     all_calls_union = list(set(all_calls_union))
     all_calls_union.sort(key=int)
@@ -327,7 +323,57 @@ def plot_varifier_calls(viridian_art_snps,
         hm = sns.heatmap(heat_matrix, cbar=False, cmap=cmap, vmin=-0.5, vmax=0.5, fmt='.2f', square=True, xticklabels=False, yticklabels=False)
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, key), dpi=300)
-    # make heatmap comparing artic and viridian
-   # for method in ["ART", "Badread"]:
-    #    viridian_calls = all_call_dict["viridian_" + method + "_heatmap.png"]
-     #   artic_calls = all_call_dict["artic_" + method + "_heatmap.png"]
+
+def pairwise_compare(first_assemblies,
+                     second_assemblies_dir,
+                     output_dir,
+                     comparison):
+    """Get pairwise differences in bases"""
+    temp_dir = tempfile.mkdtemp(dir=output_dir)
+    alignment_files = []
+    for assembly in first_assemblies:
+        if comparison == "viridian_artic":
+            first_assembly = os.path.join(assembly, "consensus.fa")
+            second_assembly = os.path.join(second_assemblies_dir, os.path.basename(assembly), "consensus.fa")
+        if comparison == "viridian_simulated":
+            first_assembly = os.path.join(assembly, "consensus.fa")
+            second_assembly = os.path.join(second_assemblies_dir, os.path.basename(assembly) + ".fasta")
+        if comparison == "artic_simulated":
+            first_assembly = os.path.join(assembly, "consensus.fa")
+            second_assembly = os.path.join(second_assemblies_dir, os.path.basename(assembly) + ".fasta")
+        input_alignment = os.path.join(temp_dir, "unaligned_" + os.path.basename(assembly) + ".fasta")
+        sequences = []
+        with open(first_assembly) as inFirst:
+            first_assembly = inFirst.read().splitlines()[1:]
+        with open(second_assembly) as inSecond:
+            second_assembly = inSecond.read().splitlines()[1:]
+        sequences.append(">" + os.path.basename(assembly) + "_" + comparison.split("_")[0] + "\n" + "".join(first_assembly))
+        sequences.append(">" + os.path.basename(assembly) + "_" + comparison.split("_")[1] + "\n" + "".join(second_assembly))
+        with open(input_alignment, "w") as outAln:
+            outAln.write("\n".join(sequences))
+        output_alignment = os.path.join(temp_dir, "aligned_" + os.path.basename(assembly) + ".fasta")
+        align_command = "mafft --6merpair " + input_alignment + " > " + output_alignment
+        subprocess.run(align_command, shell=True, check=True)
+        alignment_files.append(output_alignment)
+    # compare base by base to build matrix comparing assembly methods
+    base_by_base = {}
+    for alignment in alignment_files:
+        with open(alignment, "r") as inA:
+            content = inA.read()
+        methods = content.split(">")[1:]
+        for sample in range(len(methods)):
+            methods[sample] = "".join(methods[sample].upper().splitlines()[1:])
+        first_sequence = list(methods[0])
+        second_sequence = list(methods[1])
+        for base in range(len(first_sequence)):
+            if not first_sequence[base] == second_sequence[base]:
+                if not str(first_sequence[base] + second_sequence[base]) in base_by_base:
+                    base_by_base[str(first_sequence[base] + second_sequence[base])] = []
+                base_by_base[str(first_sequence[base] + second_sequence[base])].append(base + 1)
+    base_counts = {}
+    for change in base_by_base:
+        base_counts[change] = len(base_by_base[change])
+    with open(os.path.join(output_dir, comparison + "_base_by_base.json"), "w") as outJson:
+        outJson.write(json.dumps(base_by_base))
+    with open(os.path.join(output_dir, comparison + "_base_by_base_counts.json"), "w") as outJson:
+        outJson.write(json.dumps(base_counts))

@@ -45,18 +45,14 @@ def initiate_phylogeny(method,
                        assembly_dir,
                        vcf_dir,
                        source,
-                       output_dir):
+                       output_dir,
+                       reference_sequence):
     """ initiate the phylogeny with a single sample """
     with open(os.path.join(output_dir, method + "_assemblies", method + "_tree.nwk"), "w") as outTree:
-            outTree.write("(" + os.path.basename(assemblies[0]) + ")")
+            outTree.write("(" + os.path.basename(reference_sequence.replace(".fasta", "")) + ")")
     tree_dir = os.path.join(output_dir, method + "_assemblies")
     tree_out = os.path.join(tree_dir, method + "_phylo.pb")
-    if source == "viridian":
-        vcf_file = os.path.join(vcf_dir, os.path.basename(assemblies[0]), "variants.vcf")
-    if source == "simulated":
-        vcf_file = os.path.join(vcf_dir, os.path.basename(assemblies[0]), "04.truth.vcf")
-    if source == "artic":
-        vcf_file = os.path.join(vcf_dir, method + "_assemblies", os.path.basename(assemblies[0]), "04.truth.vcf")
+    vcf_file = reference_sequence.replace(".fasta", ".vcf")
     MAT_command = "singularity exec singularity/usher/usher.sif usher --tree " + os.path.join(output_dir,  method + "_assemblies", method + "_tree.nwk") + \
     " --vcf " + vcf_file + " --save-mutation-annotated-tree " + \
     tree_out + " -d " + tree_dir
