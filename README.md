@@ -45,6 +45,7 @@ python3 singularity/build_images.py
 ## phastSim:
 * ```tree_file```: Newick tree of SARS-CoV-2 simulated genomes.
 * ```output_dir```: Output directory name for phastSim
+* ```substitution_rate```: Substitution rate for phastSim to use.
 
 ## split_amplicons:
 * ```random_dropout_probability```: Probability of random dropout of amplicons to simulate PCR errors.

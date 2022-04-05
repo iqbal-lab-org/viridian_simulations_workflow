@@ -1,0 +1,33 @@
+Bootstrap: library
+From: ubuntu:20.04
+
+%setup
+    mkdir ${SINGULARITY_ROOTFS}/viridian_simulations_workflow
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+
+    cd ${SINGULARITY_ROOTFS}/viridian_simulations_workflow
+    # apt-get install 
+    apt-get update
+    apt-get install -y software-properties-common
+    add-apt-repository universe
+    apt-get install -y \
+        wget \
+        gcc-10 \
+        g++-10 \
+        libclang-dev \
+        cmake \
+        make
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 --slave /usr/bin/g++ g++ /usr/bin/g++-10 --slave /usr/bin/gcov gcov /usr/bin/gcov-10
+    # install MAFFT
+    wget https://mafft.cbrc.jp/alignment/software/mafft-7.490-without-extensions-src.tgz
+    gunzip -cd mafft-7.490-without-extensions-src.tgz | tar xfv -
+    cd mafft-7.490-without-extensions/core/
+    make clean
+    make
+    su
+    make install
+
+%runscript
+    mafft "$@"

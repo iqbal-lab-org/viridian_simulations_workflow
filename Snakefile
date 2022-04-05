@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from scripts.error_modes import clean_genome, find_primer_scheme
 from scripts.phylogenies import combine_vcfs, initiate_phylogeny, add_samples, optimise_phylogeny
-from scripts.make_plots import run_cte, run_varifier, generate_plots, generate_heatmap, plot_varifier_calls, pairwise_compare
+from scripts.make_plots import run_cte, run_varifier, generate_plots, generate_heatmap, plot_varifier_calls, pairwise_compare, count_dropped_bases
 
 configfile: 'config.yml'
 
@@ -50,7 +50,7 @@ rule phastSim_evolution:
         'mkdir {output} && singularity run {params.container_dir}/images/phastSim.img --outpath {output}/ --seed {params.seed} --createFasta \
                 --createInfo --createNewick --createPhylip --treeFile {input.tree_file} \
                 --invariable 0.1 --alpha {params.substitution_rate} --omegaAlpha {params.substitution_rate} --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 --codon \
-                --reference {input.reference_genome} --createMAT --indels'
+                --reference {input.reference_genome} --createMAT'
 
 rule split_sequences:
     input:
@@ -305,7 +305,7 @@ rule mask_assemblies:
         if not os.path.exists(output[0]):
             os.mkdir(output[0])
         # if mask sequences off then just copy the unmasked sequences
-        if not params.mask_assemblies == "True":
+        if not params.mask_assemblies:
             genomes = glob.glob(os.path.join(input[0], "*.fasta"))
             for g in genomes:
                 shell("cp " + g + " " + output[0])
@@ -605,7 +605,6 @@ rule assess_assemblies:
         reference_genome=config["reference_genome"],
         truth_vcf=rules.truth_vcfs.output,
         split_amplicons=rules.split_amplicons.output,
-        viridian_covid_truth_eval=rules.viridian_covid_truth_eval.output,
         artic_vcfs=rules.make_artic_vcf.output,
         artic_assemblies=rules.artic_assemble.output,
         unmasked_geomes=rules.split_sequences.output
@@ -651,8 +650,8 @@ rule assess_assemblies:
         #generate_heatmap(os.path.join(input[5], "ART_assemblies", "OUT", "Processing"), "ART", output[0])
         #generate_heatmap(os.path.join(input[5], "Badread_assemblies", "OUT", "Processing"), "Badread", output[0])
         # generate plots for the artic assemblies
-        artic_art_assemblies = glob.glob(input[7] + '/ART_assemblies/*')
-        artic_badread_assemblies = glob.glob(input[7] + '/Badread_assemblies/*')
+        artic_art_assemblies = glob.glob(input[6] + '/ART_assemblies/*')
+        artic_badread_assemblies = glob.glob(input[6] + '/Badread_assemblies/*')
         artic_art_snps = generate_plots(artic_art_assemblies,
                                             amplicon_stats,
                                             input[3],
@@ -662,7 +661,7 @@ rule assess_assemblies:
                                             threads,
                                             output[0],
                                             params.container_dir,
-                                            input[6],
+                                            input[5],
                                             os.path.join(input[0], "ART_assemblies"))
         artic_badread_snps = generate_plots(artic_badread_assemblies,
                                             amplicon_stats,
@@ -680,17 +679,23 @@ rule assess_assemblies:
                             output[0])
         # generate matrices of pairwise SNP comparisons in viridian vs artic assemblies
         pairwise_compare(art_assemblies,
-                         os.path.join(input[7], "ART_assemblies"),
+                         os.path.join(input[6], "ART_assemblies"),
                          output[0],
-                         "viridian_artic")
+                         "viridian_artic",
+                         params.container_dir)
         pairwise_compare(artic_art_assemblies,
-                         input[8],
+                         input[7],
                          output[0],
-                         "artic_simulated")
+                         "artic_simulated",
+                         params.container_dir)
         pairwise_compare(art_assemblies,
-                         input[8],
+                         input[7],
                          output[0],
-                         "viridian_simulated")
+                         "viridian_simulated",
+                         params.container_dir)
+        # count the actual number of low coverage bases
+        count_dropped_bases(input[4],
+                            output[0])
 
 
 rule build_viridian_phylogeny:

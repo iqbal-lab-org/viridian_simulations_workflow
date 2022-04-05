@@ -6,6 +6,7 @@ from matplotlib.colors import LinearSegmentedColormap
 import numpy as np
 import os
 import pandas as pd
+import pickle
 import pysam
 import seaborn as sns
 from statistics import mean
@@ -327,7 +328,8 @@ def plot_varifier_calls(viridian_art_snps,
 def pairwise_compare(first_assemblies,
                      second_assemblies_dir,
                      output_dir,
-                     comparison):
+                     comparison,
+                     container_dir):
     """Get pairwise differences in bases"""
     temp_dir = tempfile.mkdtemp(dir=output_dir)
     alignment_files = []
@@ -352,7 +354,7 @@ def pairwise_compare(first_assemblies,
         with open(input_alignment, "w") as outAln:
             outAln.write("\n".join(sequences))
         output_alignment = os.path.join(temp_dir, "aligned_" + os.path.basename(assembly) + ".fasta")
-        align_command = "mafft --6merpair " + input_alignment + " > " + output_alignment
+        align_command = container_dir + "/images/Mafft.img --6merpair " + input_alignment + " > " + output_alignment
         subprocess.run(align_command, shell=True, check=True)
         alignment_files.append(output_alignment)
     # compare base by base to build dictionary comparing assembly methods
@@ -366,10 +368,9 @@ def pairwise_compare(first_assemblies,
         first_sequence = list(methods[0])
         second_sequence = list(methods[1])
         for base in range(len(first_sequence)):
-            if not first_sequence[base] == second_sequence[base]:
-                if not str(first_sequence[base] + second_sequence[base]) in base_by_base:
-                    base_by_base[str(first_sequence[base] + second_sequence[base])] = []
-                base_by_base[str(first_sequence[base] + second_sequence[base])].append(base + 1)
+            if not str(first_sequence[base] + second_sequence[base]) in base_by_base:
+                base_by_base[str(first_sequence[base] + second_sequence[base])] = []
+            base_by_base[str(first_sequence[base] + second_sequence[base])].append(base + 1)
     base_counts = {}
     for change in base_by_base:
         base_counts[change] = len(base_by_base[change])
@@ -377,3 +378,35 @@ def pairwise_compare(first_assemblies,
         outJson.write(json.dumps(base_by_base))
     with open(os.path.join(output_dir, comparison + "_base_by_base_counts.json"), "w") as outJson:
         outJson.write(json.dumps(base_counts))
+
+def count_dropped_bases(amplicon_dir,
+                        output_dir):
+    """Count number of low coverage bases and write out as json"""
+    with open(os.path.join(amplicon_dir, 'amplicon_statistics.pickle'), 'rb') as statsHandle:
+        amplicon_stats = pickle.load(statsHandle)
+    # iterate through samples
+    N_stats = {"low_coverage_bases": 0, "number_amplicons": 0}
+    for sample in amplicon_stats:
+        pos_coverage_dict = {}
+        # iterate through amplicons
+        for amplicon in amplicon_stats[sample]:
+            if amplicon_stats[sample][amplicon]["coverage"] < 10:
+                N_stats["number_amplicons"] += 1
+                current_start = amplicon_stats[sample][amplicon]["amplicon_start"]
+                current_end = amplicon_stats[sample][amplicon]["amplicon_end"]
+                amplicon_no = int(amplicon.split("_")[1])
+                if not amplicon_no == 0:
+                    previous_amplicon = "_".join(["SARS-CoV-2", str(amplicon_no - 1), "LEFT---SARS-CoV-2", str(amplicon_no - 1), "RIGHT"])
+                    previous_end = amplicon_stats[sample][previous_amplicon]["amplicon_end"]
+                else:
+                    previous_end = current_start
+                if not amplicon_no == 99:
+                    next_amplicon = "_".join(["SARS-CoV-2", str(amplicon_no + 1), "LEFT---SARS-CoV-2", str(amplicon_no + 1), "RIGHT"])
+                    next_start = amplicon_stats[sample][next_amplicon]["amplicon_start"]
+                else:
+                    next_start = current_end
+                low_coverage = next_start - previous_end   
+                N_stats["low_coverage_bases"] = N_stats["low_coverage_bases"] + low_coverage
+    # write low coverage base count as json
+    with open(os.path.join(output_dir, "low_coverage_base_count.json"), "w") as outJson:
+        outJson.write(json.dumps(N_stats))
