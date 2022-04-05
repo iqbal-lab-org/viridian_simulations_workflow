@@ -17,6 +17,7 @@ VGsim:
 phastSim:
   tree_file: newick_output.nwk
   output_dir: phastSim_output
+  substitution_rate: 0.0002
 
 split_amplicons:
   random_dropout_probability: 0.001

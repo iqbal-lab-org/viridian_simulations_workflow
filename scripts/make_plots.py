@@ -355,7 +355,7 @@ def pairwise_compare(first_assemblies,
         align_command = "mafft --6merpair " + input_alignment + " > " + output_alignment
         subprocess.run(align_command, shell=True, check=True)
         alignment_files.append(output_alignment)
-    # compare base by base to build matrix comparing assembly methods
+    # compare base by base to build dictionary comparing assembly methods
     base_by_base = {}
     for alignment in alignment_files:
         with open(alignment, "r") as inA:

@@ -44,11 +44,12 @@ rule phastSim_evolution:
         directory(config['phastSim']['output_dir'])
     params:
         seed=config['seed'],
-        container_dir=config["container_directory"]
+        container_dir=config["container_directory"],
+        substitution_rate=config['phastSim']["substitution_rate"]
     shell:
         'mkdir {output} && singularity run {params.container_dir}/images/phastSim.img --outpath {output}/ --seed {params.seed} --createFasta \
                 --createInfo --createNewick --createPhylip --treeFile {input.tree_file} \
-                --invariable 0.1 --alpha 0.0002 --omegaAlpha 0.0002 --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 --codon \
+                --invariable 0.1 --alpha {params.substitution_rate} --omegaAlpha {params.substitution_rate} --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 --codon \
                 --reference {input.reference_genome} --createMAT --indels'
 
 rule split_sequences:
