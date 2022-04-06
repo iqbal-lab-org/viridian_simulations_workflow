@@ -535,7 +535,67 @@ rule artic_covid_truth_eval:
                 os.path.join(output[0], "Badread_assemblies"),
                 input[2],
                 params.container_dir)
-        
+
+rule make_artic_vcfs:
+    input:
+        artic_assemblies=rules.artic_assemble.output,
+        reference_genome=config["reference_genome"],
+        amplicon_sequences=rules.split_amplicons.output
+    output:
+        directory("artic_vcfs")
+    params:
+        container_dir=config["container_directory"]
+    threads:
+        config['threads']
+    run:
+        def run_varifier(assembly,
+                         covered,
+                         reference,
+                         output_dir,
+                         container_dir):
+            """Run varifier make_truth_vcf on the masked assemblies"""
+            covered_start = covered["start"]
+            covered_end = covered["end"]
+            varifier_command = "singularity run " + container_dir + "/varifier/varifier.img make_truth_vcf --global_align "
+            varifier_command += "--global_align_min_coord " + covered_start + " --global_align_max_coord " + covered_end
+            varifier_command += " " + os.path.join(assembly, "consensus.fa") + " " + reference + " " + output_dir
+            shell(varifier_command)
+
+        # make directory
+        for sub_dir in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
+            if not os.path.exists(sub_dir):
+                os.mkdir(sub_dir)
+        # load list of assemblies
+        art_assemblies = glob.glob(os.path.join(input[0], "ART_assemblies", "*"))
+        badread_assemblies = glob.glob(os.path.join(input[0], "Badread_assemblies", "*"))
+        # import the amplicon statistics file to extract what parts of the assembly are covered by amplicons
+        with open(os.path.join(input[2], 'amplicon_statistics.pickle'), 'rb') as statIn:
+            amplicon_stats = pickle.load(statIn)
+        regions_covered = {}
+        for sample in amplicon_stats:
+            amplicons = list(amplicon_stats[sample].keys())
+            regions_covered[sample] = {"start": str(amplicon_stats[sample][amplicons[0]]["amplicon_start"]),
+                                       "end": str(amplicon_stats[sample][amplicons[len(amplicons)-1]]["amplicon_end"])}
+        # parallelise make_truth_vcf
+        subsetted_art = [
+            art_assemblies[i:i + threads] for i in range(0, len(art_assemblies), threads)
+        ]
+        for subset in subsetted_art:
+            Parallel(n_jobs=threads, prefer="threads")(delayed(run_varifier)(sample,
+                                                                            regions_covered[os.path.basename(sample)],
+                                                                            input[1],
+                                                                            os.path.join(output[0], "ART_assemblies", os.path.basename(sample)),
+                                                                            params.container_dir) for sample in subset)
+        subsetted_badread = [
+            badread_assemblies[i:i + threads] for i in range(0, len(badread_assemblies), threads)
+        ]
+        for subset in subsetted_badread:
+            Parallel(n_jobs=threads, prefer="threads")(delayed(run_varifier)(sample,
+                                                                            regions_covered[os.path.basename(sample)],
+                                                                            input[1],
+                                                                            os.path.join(output[0], "Badread_assemblies", os.path.basename(sample)),
+                                                                            params.container_dir) for sample in subset)
+
 rule assess_assemblies:
     input:
         viridian_assemblies=rules.run_viridian.output,
@@ -543,7 +603,7 @@ rule assess_assemblies:
         reference_genome=config["reference_genome"],
         truth_vcf=rules.truth_vcfs.output,
         split_amplicons=rules.split_amplicons.output,
-        artic_vcfs=rules.make_artic_vcf.output,
+        artic_vcfs=rules.make_artic_vcfs.output,
         artic_assemblies=rules.artic_assemble.output,
         unmasked_geomes=rules.split_sequences.output
     params:
@@ -793,68 +853,6 @@ rule build_simulated_phylogeny:
                 # optimise the tree after every batch is added
                 optimise_phylogeny(tree_file,
                                     threads)
-
-rule make_artic_vcfs:
-    input:
-        artic_assemblies=rules.artic_assemble.output,
-        reference_genome=config["reference_genome"],
-        amplicon_sequences=rules.split_amplicons.output
-    output:
-        directory("artic_vcfs")
-    params:
-        container_dir=config["container_directory"]
-    threads:
-        config['threads']
-    run:
-        def run_varifier(assembly,
-                         covered,
-                         reference,
-                         output_dir,
-                         container_dir):
-            """Run varifier make_truth_vcf on the masked assemblies"""
-            covered_start = covered["start"]
-            covered_end = covered["end"]
-            varifier_command = "singularity run " + container_dir + "/varifier/varifier.img make_truth_vcf --global_align "
-            #varifier_command = 'singularity exec "docker://quay.io/iqballab/varifier" varifier make_truth_vcf --global_align '
-            varifier_command += "--global_align_min_coord " + covered_start + " --global_align_max_coord " + covered_end
-            varifier_command += " " + os.path.join(assembly, "consensus.fa") + " " + reference + " " + output_dir
-            shell(varifier_command)
-
-        # make directory
-        for sub_dir in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
-            if not os.path.exists(sub_dir):
-                os.mkdir(sub_dir)
-        # load list of assemblies
-        art_assemblies = glob.glob(os.path.join(input[0], "ART_assemblies", "*"))
-        badread_assemblies = glob.glob(os.path.join(input[0], "Badread_assemblies", "*"))
-        # import the amplicon statistics file to extract what parts of the assembly are covered by amplicons
-        with open(os.path.join(input[2], 'amplicon_statistics.pickle'), 'rb') as statIn:
-            amplicon_stats = pickle.load(statIn)
-        regions_covered = {}
-        for sample in amplicon_stats:
-            amplicons = list(amplicon_stats[sample].keys())
-            regions_covered[sample] = {"start": str(amplicon_stats[sample][amplicons[0]]["amplicon_start"]),
-                                       "end": str(amplicon_stats[sample][amplicons[len(amplicons)-1]]["amplicon_end"])}
-        # parallelise make_truth_vcf
-        subsetted_art = [
-            art_assemblies[i:i + threads] for i in range(0, len(art_assemblies), threads)
-        ]
-        for subset in subsetted_art:
-            Parallel(n_jobs=threads, prefer="threads")(delayed(run_varifier)(sample,
-                                                                            regions_covered[os.path.basename(sample)],
-                                                                            input[1],
-                                                                            os.path.join(output[0], "ART_assemblies", os.path.basename(sample)),
-                                                                            params.container_dir) for sample in subset)
-        subsetted_badread = [
-            badread_assemblies[i:i + threads] for i in range(0, len(badread_assemblies), threads)
-        ]
-        for subset in subsetted_badread:
-            Parallel(n_jobs=threads, prefer="threads")(delayed(run_varifier)(sample,
-                                                                            regions_covered[os.path.basename(sample)],
-                                                                            input[1],
-                                                                            os.path.join(output[0], "Badread_assemblies", os.path.basename(sample)),
-                                                                            params.container_dir) for sample in subset)
-
 
 rule build_artic_phylogeny:
     input:
