@@ -21,8 +21,21 @@ def find_primer_scheme(scheme,
     if scheme == "V3":
         # path of V3 artic primer metadata
         primer_sequences = os.path.join(scheme_dir, scheme, "nCoV-2019.tsv")
+        bed_file = os.path.join(scheme_dir, scheme, "nCoV-2019.scheme.bed")
         # import tsv file as pandas dataframe
         primer_df = pd.read_csv(primer_sequences, sep='\t')
+        with open(bed_file, "r") as inBed:
+            bed_content = inBed.read().splitlines()
+        # add primer start and ends to the primer_df
+        ref_starts = []
+        ref_ends = []
+        for name in primer_df["name"]:
+            bed_row = next((s for s in bed_content if name in s), None)
+            bed_row = bed_row.split("\t")
+            ref_starts.append(bed_row[1])
+            ref_ends.append(bed_row[2])
+        primer_df["ref_start"] = ref_starts
+        primer_df["ref_end"] = ref_ends
         # split primer sequences by their pool
         pool1_primers = []
         pool2_primers = []
@@ -42,11 +55,13 @@ def find_primer_scheme(scheme,
         pool1_primers = []
         pool2_primers = []
         # extract primer names and sequences and convert to df
-        primer_dict = {"name": [], "seq": [], "pool": []}
+        primer_dict = {"name": [], "seq": [], "pool": [], "ref_start": [], "ref_end": []}
         for row in primers:
             split = row.split("\t")
             primer_dict["name"].append(split[3])
             primer_dict["seq"].append(split[6])
+            primer_dict["ref_start"].append(split[1])
+            primer_dict["ref_end"].append(split[2])
             if split[4] == "1":
                 pool1_primers.append(split[6])
                 primer_dict["pool"].append("nCoV-2019_1")
@@ -71,8 +86,8 @@ def find_primer_scheme(scheme,
             for prospective_name in ordered_primer_names:
                 if prospective_name in primer_dict["name"]:
                     primer_pools.append(primer_dict["pool"][primer_dict["name"].index(prospective_name)])
-                    primer_data.append((prospective_name, primer_dict["seq"][primer_dict["name"].index(prospective_name)]))
-            primer_df = pd.DataFrame(primer_data, columns=['name','seq'])
+                    primer_data.append((prospective_name, primer_dict["seq"][primer_dict["name"].index(prospective_name)], primer_dict["ref_start"][primer_dict["name"].index(prospective_name)], primer_dict["ref_end"][primer_dict["name"].index(prospective_name)]))
+            primer_df = pd.DataFrame(primer_data, columns=['name','seq','ref_start','ref_end'])
             primer_df["pool"] = primer_pools
             return primer_df, pool1_primers, pool2_primers
         else:

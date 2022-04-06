@@ -3,6 +3,7 @@ import gzip
 from joblib import Parallel, delayed
 import os
 import pickle
+import pysam
 import random
 import shutil
 from tqdm import tqdm
@@ -16,7 +17,9 @@ configfile: 'config.yml'
 rule all:
     input:
         "phylogeny_comparisons",
-        "varifier_statistics"
+        "varifier_statistics",
+        "cte_artic_output",
+        "cte_viridian_output"
 
 rule VGsim_tree:
     input:
@@ -304,15 +307,29 @@ rule mask_assemblies:
         # make directory
         if not os.path.exists(output[0]):
             os.mkdir(output[0])
+        # mask bases outside of the amplicon scheme
+        with open(os.path.join(input[1], 'amplicon_statistics.pickle'), 'rb') as statIn:
+            amplicon_stats = pickle.load(statIn)
+        # mask bases outside of scheme per sample
+        for sample in amplicon_stats:
+            sample_stats = amplicon_stats[sample]
+            amplicons = list(sample_stats.keys())
+            first_amplicon_start = amplicon_stats[sample][amplicons[0]]["amplicon_start"]
+            last_amplicon_end = amplicon_stats[sample][amplicons[-1]]["amplicon_end"]
+            # import truth genome and cut off bases at the ends
+            filename = str(sample) + ".fasta"
+            sample_name, sample_sequence = clean_genome(os.path.join(input[0], filename))
+            sample_sequence = list(sample_sequence)
+            sample_sequence = sample_sequence[first_amplicon_start: last_amplicon_end]
+            # write out the masked simulated sequence
+            with open(os.path.join(input[0], filename), "w") as outGen:
+                outGen.write("\n".join([">" + sample_name, "".join(sample_sequence)]))
         # if mask sequences off then just copy the unmasked sequences
         if not params.mask_assemblies:
             genomes = glob.glob(os.path.join(input[0], "*.fasta"))
             for g in genomes:
                 shell("cp " + g + " " + output[0])
         else:
-            # import the amplicon statistics file to see which amplicons to mask
-            with open(os.path.join(input[1], 'amplicon_statistics.pickle'), 'rb') as statIn:
-                amplicon_stats = pickle.load(statIn)
             # iterate through samples and check if amplicons have low coverage, if so then mask their sequence
             for sample in amplicon_stats:
                 sample_stats = amplicon_stats[sample]
@@ -348,12 +365,15 @@ rule truth_vcfs:
     output:
         directory("truth_vcfs")
     params:
-        container_dir=config["container_directory"]
+        container_dir=config["container_directory"],
+        primer_scheme=config['primer_scheme']
     threads:
         config['threads']
     run:
         def run_varifier(assembly,
                          covered,
+                         dropped_amplicons,
+                         primer_df,
                          reference,
                          output_dir,
                          container_dir):
@@ -361,10 +381,28 @@ rule truth_vcfs:
             covered_start = covered["start"]
             covered_end = covered["end"]
             varifier_command = "singularity run " + container_dir + "/varifier/varifier.img make_truth_vcf --global_align "
-            #varifier_command = 'singularity exec "docker://quay.io/iqballab/varifier" varifier make_truth_vcf --global_align '
             varifier_command += "--global_align_min_coord " + covered_start + " --global_align_max_coord " + covered_end
             varifier_command += " " + assembly + " " + reference + " " + output_dir
             shell(varifier_command)
+            # append dropped amplicon information to the truth vcf
+            #with open(os.path.join(output_dir, "04.truth.vcf"), "r") as truth_vcf_in:
+             #   truth_vcf = truth_vcf_in.read()
+            #to_add = []
+            #variant_count = int(truth_vcf.splitlines()[-1].split("\t")[2])
+            #for dropped in dropped_amplicons:
+             #   start_pos = primer_df.loc[primer_df['name'] == dropped[0]].reset_index(drop=True)["ref_start"][0]
+              #  end_pos = primer_df.loc[primer_df['name'] == dropped[1]].reset_index(drop=True)["ref_end"][0]
+               # variant_count += 1
+                #variant_line = "MN908947.3\t" + str(start_pos) + "\t" + str(variant_count) + "\tG\tN\t.\tDROPPED_AMP\tAMP_START=" + str(int(start_pos)-1) + ";AMP_END=" + str(int(end_pos)-1) + "\tGT\t1/1\n"
+                #truth_vcf += variant_line
+            #truth_vcf = truth_vcf.split("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample")
+            #truth_vcf_variants = truth_vcf[1].splitlines()[1:]
+            #first_line = [truth_vcf[1].splitlines()[1]]
+            #truth_vcf_variants.sort(key=lambda x: int(x.split("\t")[1]))
+           # truth_vcf[1] = "\n".join(first_line + truth_vcf_variants)
+            #truth_vcf = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample".join(truth_vcf)
+            #with open(os.path.join(output_dir, "04.truth.vcf"), "w") as truth_vcf_out:
+             #   truth_vcf_out.write("\n".join(truth_vcf.splitlines()[1:]))
 
         # make directory
         if not os.path.exists(output[0]):
@@ -375,10 +413,19 @@ rule truth_vcfs:
         with open(os.path.join(input[2], 'amplicon_statistics.pickle'), 'rb') as statIn:
             amplicon_stats = pickle.load(statIn)
         regions_covered = {}
+        amplicons_dropped = {}
         for sample in amplicon_stats:
             amplicons = list(amplicon_stats[sample].keys())
             regions_covered[sample] = {"start": str(amplicon_stats[sample][amplicons[0]]["amplicon_start"]),
                                        "end": str(amplicon_stats[sample][amplicons[len(amplicons)-1]]["amplicon_end"])}
+            # record amplicons dropped for each sample so dropped amplicons can be marked in the truth vcf
+            amplicons_dropped[sample] = []
+            for a in amplicons:
+                if amplicon_stats[sample][a]["has_error"] and any(amplicon_stats[sample][a]["errors"][0] == mode for mode in ["primer_SNP", "random_dropout", "primer_dimer"]):
+                    amplicons_dropped[sample].append((a.split("---")[0], a.split("---")[1]))
+        # import the primer scheme df to get amplicon positions relative to ref
+        primer_df, pool1_primers, pool2_primers = find_primer_scheme(params.primer_scheme,
+                                                                    "primer_schemes")
         # parallelise make_truth_vcf
         subsetted_assemblies = [
             assemblies[i:i + threads] for i in range(0, len(assemblies), threads)
@@ -386,6 +433,8 @@ rule truth_vcfs:
         for subset in subsetted_assemblies:
             Parallel(n_jobs=threads, prefer="threads")(delayed(run_varifier)(sample,
                                                                             regions_covered[os.path.basename(sample).replace(".fasta", "")],
+                                                                            amplicons_dropped[os.path.basename(sample).replace(".fasta", "")],
+                                                                            primer_df,
                                                                             input[1],
                                                                             os.path.join(output[0], os.path.basename(sample).replace(".fasta", "")),
                                                                             params.container_dir) for sample in subset)
