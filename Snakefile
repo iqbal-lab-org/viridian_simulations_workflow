@@ -437,7 +437,7 @@ rule artic_assemble:
             shell_command += "--ont " + read_file + ".gz "
             shell_command += "--scheme_url " + scheme_url + " --scheme_version " + primer_scheme + " --nextflow_path " + nextflow_path + " "
             shell_command += "--sample_name " + os.path.basename(read_file).replace(".fastq", "")
-            #shell(shell_command) 
+            shell(shell_command) 
         
         # list read sets
         art_samples = glob.glob(os.path.join(input[0], "ART_output", '*_1.fastq'))
@@ -471,68 +471,6 @@ rule artic_assemble:
                                                                                             os.path.join(output[0], "Badread_assemblies", os.path.basename(read).replace(".fastq", "")),
                                                                                             params.nextflow_path,
                                                                                             params.primer_scheme) for read in subset)
-
-
-rule make_artic_vcf:
-    input:
-        artic_assemblies=rules.artic_assemble.output,
-        reference_genome=config["reference_genome"],
-        amplicon_sequences=rules.split_amplicons.output
-    output:
-        directory("artic_vcfs")
-    params:
-        container_dir=config["container_directory"]
-    threads:
-        config['threads']
-    run:
-        def run_artic_varifier(assembly,
-                                covered,
-                                reference,
-                                output_dir,
-                                container_dir):
-            """Run varifier make_truth_vcf on the masked assemblies"""
-            covered_start = covered["start"]
-            covered_end = covered["end"]
-            varifier_command = "singularity run " + container_dir + "/varifier/varifier.img make_truth_vcf --global_align "
-            #varifier_command = 'singularity exec "docker://quay.io/iqballab/varifier" varifier make_truth_vcf --global_align '
-            varifier_command += "--global_align_min_coord " + covered_start + " --global_align_max_coord " + covered_end
-            varifier_command += " " + os.path.join(assembly, "consensus.fa") + " " + reference + " " + output_dir
-            shell(varifier_command)
-
-        # make directory
-        for subdir in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
-            if not os.path.exists(subdir):
-                os.mkdir(subdir)
-        # load list of assemblies
-        art_assemblies = glob.glob(os.path.join(input[0], "ART_assemblies", "*"))
-        badread_assemblies = glob.glob(os.path.join(input[0], "Badread_assemblies", "*"))
-        # import the amplicon statistics file to extract what parts of the assembly are covered by amplicons
-        with open(os.path.join(input[2], 'amplicon_statistics.pickle'), 'rb') as statIn:
-            amplicon_stats = pickle.load(statIn)
-        regions_covered = {}
-        for sample in amplicon_stats:
-            amplicons = list(amplicon_stats[sample].keys())
-            regions_covered[sample] = {"start": str(amplicon_stats[sample][amplicons[0]]["amplicon_start"]),
-                                       "end": str(amplicon_stats[sample][amplicons[len(amplicons)-1]]["amplicon_end"])}
-        # parallelise make_truth_vcf
-        subsetted_art_assemblies = [
-            art_assemblies[i:i + threads] for i in range(0, len(art_assemblies), threads)
-        ]
-        for subset in subsetted_art_assemblies:
-            Parallel(n_jobs=threads, prefer="threads")(delayed(run_artic_varifier)(sample,
-                                                                                regions_covered[os.path.basename(sample)],
-                                                                                input[1],
-                                                                                os.path.join(output[0], "ART_assemblies", os.path.basename(sample)),
-                                                                                params.container_dir) for sample in subset)
-        subsetted_badread_assemblies = [
-            badread_assemblies[i:i + threads] for i in range(0, len(badread_assemblies), threads)
-        ]
-        for subset in subsetted_badread_assemblies:
-            Parallel(n_jobs=threads, prefer="threads")(delayed(run_artic_varifier)(sample,
-                                                                                regions_covered[os.path.basename(sample)],
-                                                                                input[1],
-                                                                                os.path.join(output[0], "Badread_assemblies", os.path.basename(sample)),
-                                                                                params.container_dir) for sample in subset)
 
 rule viridian_covid_truth_eval:
     input:
@@ -592,11 +530,11 @@ rule artic_covid_truth_eval:
                 os.path.join(output[0], "ART_assemblies"),
                 input[2],
                 params.container_dir)
-        #run_cte(params.primer_scheme,
-         #       badread_assemblies,
-          #      os.path.join(output[0], "Badread_assemblies"),
-           #     input[2],
-            #    params.container_dir)
+        run_cte(params.primer_scheme,
+                badread_assemblies,
+                os.path.join(output[0], "Badread_assemblies"),
+                input[2],
+                params.container_dir)
         
 rule assess_assemblies:
     input:
@@ -676,6 +614,7 @@ rule assess_assemblies:
         plot_varifier_calls(viridian_art_snps,
                             viridian_badread_snps,
                             artic_art_snps,
+                            artic_badread_snps,
                             output[0])
         # generate matrices of pairwise SNP comparisons in viridian vs artic assemblies
         pairwise_compare(art_assemblies,
@@ -955,7 +894,7 @@ rule build_artic_phylogeny:
             if not os.path.exists(directory):
                 os.mkdir(directory)
         # build ART and Badread trees using USHER
-        for method in ["ART_assemblies"]:#, "Badread_assemblies"]:
+        for method in ["ART_assemblies", "Badread_assemblies"]:
             if method == "ART_assemblies":
                 out_dir = os.path.join(output[0], "ART_assemblies")
                 in_files = art_assemblies

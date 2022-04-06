@@ -264,11 +264,11 @@ def generate_heatmap(eval_dir, method, output_dir):
 def plot_varifier_calls(viridian_art_snps,
                         viridian_badread_snps,
                         artic_art_snps,
-                        output_dir,
-                        artic_badread_snps=None):
+                        artic_badread_snps,
+                        output_dir,):
     """Plot the union of snp calls"""
     # iterate through call set
-    all_sets = [viridian_art_snps, viridian_badread_snps, artic_art_snps]#, artic_badread_snps]
+    all_sets = [viridian_art_snps, viridian_badread_snps, artic_art_snps, artic_badread_snps]
     all_call_dict = {}
     all_calls_union = []
     for calls in range(len(all_sets)):
@@ -294,7 +294,6 @@ def plot_varifier_calls(viridian_art_snps,
                 else:
                     call_by_base[sample][position] = -1
                     wrong.add(position)
-        print(wrong)
         if calls == 0:
             all_call_dict["viridian_ART_heatmap.png"] = call_by_base
         elif calls == 1:
