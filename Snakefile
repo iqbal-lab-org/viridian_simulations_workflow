@@ -322,13 +322,11 @@ rule mask_assemblies:
             sample_sequence = list(sample_sequence)
             sample_sequence = sample_sequence[first_amplicon_start: last_amplicon_end]
             # write out the masked simulated sequence
-            with open(os.path.join(input[0], filename), "w") as outGen:
+            with open(os.path.join(output[0], filename), "w") as outGen:
                 outGen.write("\n".join([">" + sample_name, "".join(sample_sequence)]))
         # if mask sequences off then just copy the unmasked sequences
         if not params.mask_assemblies:
-            genomes = glob.glob(os.path.join(input[0], "*.fasta"))
-            for g in genomes:
-                shell("cp " + g + " " + output[0])
+            pass
         else:
             # iterate through samples and check if amplicons have low coverage, if so then mask their sequence
             for sample in amplicon_stats:
@@ -336,7 +334,7 @@ rule mask_assemblies:
                 all_amplicons = list(sample_stats.keys())
                 # import the simulated squence
                 filename = str(sample) + ".fasta"
-                sample_name, sample_sequence = clean_genome(os.path.join(input[0], filename))
+                sample_name, sample_sequence = clean_genome(os.path.join(output[0], filename))
                 sample_sequence = list(sample_sequence)
                 # look through the amplicon statistics to see if an amplicon needs to be masked
                 for amplicon in range(len(all_amplicons)-1):
@@ -345,11 +343,11 @@ rule mask_assemblies:
                         or "primer_dimer" in sample_stats[all_amplicons[amplicon]]["errors"]:
                         # we are masking regions with low coverage that are not covered by the adjacent amplicons
                         if not amplicon == 0:
-                            mask_start = sample_stats[all_amplicons[amplicon-1]]["right_primer_start"]
+                            mask_start = sample_stats[all_amplicons[amplicon-1]]["amplicon_end"]
                             #mask_start = sample_stats[all_amplicons[amplicon]]["amplicon_start"]
                         else:
                             mask_start = sample_stats[all_amplicons[amplicon]]["amplicon_start"]
-                        mask_end = sample_stats[all_amplicons[amplicon+1]]["left_primer_end"]
+                        mask_end = sample_stats[all_amplicons[amplicon+1]]["amplicon_start"]
                         #mask_end = sample_stats[all_amplicons[amplicon]]["amplicon_end"]
                         # replace the masked sequence with Ns
                         sample_sequence[mask_start:mask_end] = list("N"*(mask_end-mask_start))

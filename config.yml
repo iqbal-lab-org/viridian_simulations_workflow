@@ -36,7 +36,7 @@ artic_assemble:
   nanopore_workflow_container: ~/Documents/GitHub/viridian_simulations_workflow/singularity/ncov2019-artic-nf/artic-ncov2019-nanopore.20210408.8af5152cf7.sif
 
 mask_assemblies:
-  apply_mask: False
+  apply_mask: True
 
 phylogenies:
   batch_size: 50
