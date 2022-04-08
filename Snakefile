@@ -383,24 +383,24 @@ rule truth_vcfs:
             varifier_command += " " + assembly + " " + reference + " " + output_dir
             shell(varifier_command)
             # append dropped amplicon information to the truth vcf
-            #with open(os.path.join(output_dir, "04.truth.vcf"), "r") as truth_vcf_in:
-             #   truth_vcf = truth_vcf_in.read()
-            #to_add = []
-            #variant_count = int(truth_vcf.splitlines()[-1].split("\t")[2])
-            #for dropped in dropped_amplicons:
-             #   start_pos = primer_df.loc[primer_df['name'] == dropped[0]].reset_index(drop=True)["ref_start"][0]
-              #  end_pos = primer_df.loc[primer_df['name'] == dropped[1]].reset_index(drop=True)["ref_end"][0]
-               # variant_count += 1
-                #variant_line = "MN908947.3\t" + str(start_pos) + "\t" + str(variant_count) + "\tG\tN\t.\tDROPPED_AMP\tAMP_START=" + str(int(start_pos)-1) + ";AMP_END=" + str(int(end_pos)-1) + "\tGT\t1/1\n"
-                #truth_vcf += variant_line
-            #truth_vcf = truth_vcf.split("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample")
-            #truth_vcf_variants = truth_vcf[1].splitlines()[1:]
-            #first_line = [truth_vcf[1].splitlines()[1]]
-            #truth_vcf_variants.sort(key=lambda x: int(x.split("\t")[1]))
-           # truth_vcf[1] = "\n".join(first_line + truth_vcf_variants)
-            #truth_vcf = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample".join(truth_vcf)
-            #with open(os.path.join(output_dir, "04.truth.vcf"), "w") as truth_vcf_out:
-             #   truth_vcf_out.write("\n".join(truth_vcf.splitlines()[1:]))
+            with open(os.path.join(output_dir, "04.truth.vcf"), "r") as truth_vcf_in:
+                truth_vcf = truth_vcf_in.read()
+            to_add = []
+            variant_count = int(truth_vcf.splitlines()[-1].split("\t")[2])
+            for dropped in dropped_amplicons:
+                start_pos = primer_df.loc[primer_df['name'] == dropped[0]].reset_index(drop=True)["ref_start"][0]
+                end_pos = primer_df.loc[primer_df['name'] == dropped[1]].reset_index(drop=True)["ref_end"][0]
+                variant_count += 1
+                variant_line = "MN908947.3\t" + str(start_pos) + "\t" + str(variant_count) + "\tG\tN\t.\tDROPPED_AMP\tAMP_START=" + str(int(start_pos)-1) + ";AMP_END=" + str(int(end_pos)-1) + "\tGT\t1/1\n"
+                truth_vcf += variant_line
+            truth_vcf = truth_vcf.split("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample")
+            truth_vcf_variants = truth_vcf[1].splitlines()[1:]
+            first_line = [truth_vcf[1].splitlines()[1]]
+            truth_vcf_variants.sort(key=lambda x: int(x.split("\t")[1]))
+            truth_vcf[1] = "\n".join(first_line + truth_vcf_variants)
+            truth_vcf = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample".join(truth_vcf)
+           # with open(os.path.join(output_dir, "04.truth.vcf"), "w") as truth_vcf_out:
+            #    truth_vcf_out.write("\n".join(truth_vcf.splitlines()[1:]))
 
         # make directory
         if not os.path.exists(output[0]):
@@ -440,6 +440,7 @@ rule truth_vcfs:
 rule artic_assemble:
     input:
         simulated_reads=rules.cat_reads.output,
+        amplicon_sequences=rules.split_amplicons.output
     output:
         directory("artic_assemblies")
     threads:
@@ -460,15 +461,34 @@ rule artic_assemble:
                                     scheme_url,
                                     output_dir,
                                     nextflow_path,
-                                    primer_scheme):
+                                    primer_scheme,
+                                    regions_covered):
             """run illumina artic nextflow pipeline"""
-            shell_command = "gzip " + forward_rd + " " + reverse_rd + " && "
-            shell_command += "python3 scripts/run_connor_pipeline.py --sif " + sif_file + " "
-            shell_command += "--main_nf " + main_nf + " --outdir " + output_dir + " "
+            if not ".gz" in forward_rd:
+                shell("gzip " + forward_rd + " " + reverse_rd)
+                forward_rd = forward_rd + ".gz"
+                reverse_rd = reverse_rd + ".gz"
+            else:
+                forward_rd = forward_rd
+                reverse_rd = reverse_rd
+            shell_command = "venv/bin/python3.9 scripts/run_connor_pipeline.py --sif " + sif_file + " "
+            shell_command += "--main_nf " + main_nf + " --outdir " + output_dir.replace(".gz", "") + " "
             shell_command += "--scheme_url " + scheme_url + " --scheme_version " + primer_scheme + " "
-            shell_command += "--ilm1 " + forward_rd + ".gz " + "--ilm2 " + reverse_rd + ".gz" + " --nextflow_path " + nextflow_path + " "
-            shell_command += "--sample_name " + os.path.basename(forward_rd).replace("_1.fastq", "")
+            shell_command += "--ilm1 " + forward_rd + " --ilm2 " + reverse_rd + " --nextflow_path " + nextflow_path + " "
+            shell_command += "--sample_name " + os.path.basename(forward_rd).replace("_1.fastq", "").replace(".gz", "") + " && "
+            if not ".gz" in forward_rd:
+                forward_rd = forward_rd + ".gz"
+                reverse_rd = reverse_rd + ".gz"
+            shell_command += "gunzip " + forward_rd + " " + reverse_rd
             shell(shell_command)
+            # cut off ends of assemblies that lie outside of the amplicon scheme
+            filename = os.path.join(output_dir.replace(".gz", ""), "consensus.fa")
+            sample_name, sample_sequence = clean_genome(filename)
+            sample_sequence = list(sample_sequence)
+            sample_sequence = sample_sequence[regions_covered["scheme_start"]: regions_covered["scheme_end"]]
+            # write out the masked simulated sequence
+            with open(filename.replace("consensus", "consensus_trimmed"), "w") as outGen:
+                outGen.write("\n".join([">" + sample_name, "".join(sample_sequence)]))
 
         def nanopore_artic_assemble(read_file,
                                     sif_file,
@@ -476,19 +496,37 @@ rule artic_assemble:
                                     scheme_url,
                                     output_dir,
                                     nextflow_path,
-                                    primer_scheme):
+                                    primer_scheme,
+                                    regions_covered):
             """run nanopore artic nextflow pipeline"""
-            shell_command = "gzip " + read_file + " && "
-            shell_command += "python3 scripts/run_connor_pipeline.py --sif " + sif_file + " "
-            shell_command += "--main_nf " + main_nf + " --outdir " + output_dir + " "
-            shell_command += "--ont " + read_file + ".gz "
+            if not ".gz" in read_file:
+                shell("gzip " + read_file)
+                read_file = read_file + ".gz"
+            else:
+                read_file = read_file
+            shell_command = "venv/bin/python3.9 scripts/run_connor_pipeline.py --sif " + sif_file + " "
+            shell_command += "--main_nf " + main_nf + " --outdir " + output_dir.replace(".gz", "") + " "
+            shell_command += "--ont " + read_file + " "
             shell_command += "--scheme_url " + scheme_url + " --scheme_version " + primer_scheme + " --nextflow_path " + nextflow_path + " "
-            shell_command += "--sample_name " + os.path.basename(read_file).replace(".fastq", "")
-            shell(shell_command) 
-        
+            shell_command += "--sample_name " + os.path.basename(read_file).replace(".fastq", "").replace(".gz", "") + " && "
+            if not ".gz" in read_file:
+                read_file = read_file + ".gz"
+            shell_command += "gunzip " + read_file
+            shell(shell_command)
+            # cut off ends of assemblies that lie outside of the amplicon scheme
+            filename = os.path.join(output_dir.replace(".gz", ""), "consensus.fa")
+            sample_name, sample_sequence = clean_genome(filename)
+            sample_sequence = list(sample_sequence)
+            sample_sequence = sample_sequence[regions_covered["scheme_start"]: regions_covered["scheme_end"]]
+            # write out the masked simulated sequence
+            with open(filename.replace("consensus", "consensus_trimmed"), "w") as outGen:
+                outGen.write("\n".join([">" + sample_name, "".join(sample_sequence)]))
+
         # list read sets
         art_samples = glob.glob(os.path.join(input[0], "ART_output", '*_1.fastq'))
+        art_samples += glob.glob(os.path.join(input[0], "ART_output", '*_1.fastq.gz'))
         badread_samples = glob.glob(os.path.join(input[0], "Badread_output", '*.fastq'))
+        badread_samples += glob.glob(os.path.join(input[0], "Badread_output", '*.fastq.gz'))
         # make output directories
         for subdir in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
             if not os.path.exists(subdir):
@@ -501,6 +539,18 @@ rule artic_assemble:
         subsetted_badread = [
             badread_samples[i:i + job_threads] for i in range(0, len(badread_samples), job_threads)
         ]
+        # import the primer scheme df to get amplicon scheme start and end relative to ref
+        primer_df, pool1_primers, pool2_primers = find_primer_scheme(params.primer_scheme,
+                                                                    "primer_schemes")
+        with open(os.path.join(input[1], 'amplicon_statistics.pickle'), 'rb') as statIn:
+            amplicon_stats = pickle.load(statIn)
+        regions_covered = {}
+        for sample in amplicon_stats:
+            amplicons = list(amplicon_stats[sample].keys())
+            scheme_start = int(primer_df.loc[primer_df['name'] == amplicons[0].split("---")[0]].reset_index(drop=True)["ref_start"][0])
+            scheme_end = int(primer_df.loc[primer_df['name'] == amplicons[len(amplicons)-1].split("---")[1]].reset_index(drop=True)["ref_start"][0]) + 1
+            regions_covered[sample] = {"scheme_start": scheme_start,
+                                       "scheme_end": scheme_end}
         for subset in tqdm(subsetted_art):
             Parallel(n_jobs=job_threads, prefer="threads")(delayed(illumina_artic_assemble)(read,
                                                                                             read.replace("_1.fastq", "_2.fastq"),
@@ -509,15 +559,17 @@ rule artic_assemble:
                                                                                             params.scheme_dir,
                                                                                             os.path.join(output[0], "ART_assemblies", os.path.basename(read).replace("_1.fastq", "")),
                                                                                             params.nextflow_path,
-                                                                                            params.primer_scheme) for read in subset)
-        for subset in tqdm(subsetted_badread):
-            Parallel(n_jobs=job_threads, prefer="threads")(delayed(nanopore_artic_assemble)(read,
-                                                                                            params.nanopore_container,
-                                                                                            os.path.join(params.container_dir, "ncov2019-artic-nf", "main.nf"),
-                                                                                            params.scheme_dir,
-                                                                                            os.path.join(output[0], "Badread_assemblies", os.path.basename(read).replace(".fastq", "")),
-                                                                                            params.nextflow_path,
-                                                                                            params.primer_scheme) for read in subset)
+                                                                                            params.primer_scheme,
+                                                                                            regions_covered[os.path.basename(read).replace("_1.fastq", "").replace(".gz", "")]) for read in subset)
+        #for subset in tqdm(subsetted_badread):
+         #   Parallel(n_jobs=job_threads, prefer="threads")(delayed(nanopore_artic_assemble)(read,
+          #                                                                                  params.nanopore_container,
+           #                                                                                 os.path.join(params.container_dir, "ncov2019-artic-nf", "main.nf"),
+            #                                                                                params.scheme_dir,
+             #                                                                               os.path.join(output[0], "Badread_assemblies", os.path.basename(read).replace(".fastq", "")),
+              #                                                                              params.nextflow_path,
+               #                                                                             params.primer_scheme,
+                   #                                                                         regions_covered[os.path.basename(read).replace(".fastq", "").replace(".gz", "")]) for read in subset)
 
 rule viridian_covid_truth_eval:
     input:
@@ -544,12 +596,14 @@ rule viridian_covid_truth_eval:
                 art_assemblies,
                 os.path.join(output[0], "ART_assemblies"),
                 input[2],
-                params.container_dir)
+                params.container_dir,
+                "viridian")
         run_cte(params.primer_scheme,
                 badread_assemblies,
                 os.path.join(output[0], "Badread_assemblies"),
                 input[2],
-                params.container_dir)
+                params.container_dir,
+                "viridian")
 
 rule artic_covid_truth_eval:
     input:
@@ -576,12 +630,14 @@ rule artic_covid_truth_eval:
                 art_assemblies,
                 os.path.join(output[0], "ART_assemblies"),
                 input[2],
-                params.container_dir)
-        run_cte(params.primer_scheme,
-                badread_assemblies,
-                os.path.join(output[0], "Badread_assemblies"),
-                input[2],
-                params.container_dir)
+                params.container_dir,
+                "artic")
+        #run_cte(params.primer_scheme,
+         #       badread_assemblies,
+          #      os.path.join(output[0], "Badread_assemblies"),
+           #     input[2],
+            #    params.container_dir,
+              #   "artic")
 
 rule make_artic_vcfs:
     input:
@@ -605,7 +661,7 @@ rule make_artic_vcfs:
             covered_end = covered["end"]
             varifier_command = "singularity run " + container_dir + "/varifier/varifier.img make_truth_vcf --global_align "
             varifier_command += "--global_align_min_coord " + covered_start + " --global_align_max_coord " + covered_end
-            varifier_command += " " + os.path.join(assembly, "consensus.fa") + " " + reference + " " + output_dir
+            varifier_command += " " + os.path.join(assembly, "consensus_trimmed.fa") + " " + reference + " " + output_dir
             shell(varifier_command)
 
         # make directory
@@ -939,7 +995,7 @@ rule build_artic_phylogeny:
             if not os.path.exists(directory):
                 os.mkdir(directory)
         # build ART and Badread trees using USHER
-        for method in ["ART_assemblies", "Badread_assemblies"]:
+        for method in ["ART_assemblies"]:#, "Badread_assemblies"]:
             if method == "ART_assemblies":
                 out_dir = os.path.join(output[0], "ART_assemblies")
                 in_files = art_assemblies

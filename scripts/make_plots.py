@@ -18,7 +18,8 @@ def run_cte(primer_scheme,
             assemblies,
             outdir,
             truth_vcf_dir,
-            container_dir):
+            container_dir,
+            method):
     """run covid-truth-eval"""
     # define the primer scheme
     if primer_scheme == "V3":
@@ -31,7 +32,11 @@ def run_cte(primer_scheme,
     manifest = ["name\ttruth_vcf\teval_fasta\tprimers"]
     for assem in assemblies:
         vcf_file = os.path.join(truth_vcf_dir, os.path.basename(assem), "04.truth.vcf")
-        manifest.append(os.path.basename(assem) + "\t" + vcf_file + "\t" + os.path.join(assem, "consensus.fa") + "\t" + scheme)
+        if method == "artic":
+            assembly_file = os.path.join(assem, "consensus_trimmed.fa")
+        else:
+            assembly_file = os.path.join(assem, "consensus.fa")
+        manifest.append(os.path.basename(assem) + "\t" + vcf_file + "\t" + assembly_file + "\t" + scheme)
     # save metadata as tsv file
     with open(os.path.join(outdir, "manifest.tsv"), "w") as manifestOut:
         manifestOut.write("\n".join(manifest))
@@ -335,12 +340,12 @@ def pairwise_compare(first_assemblies,
     for assembly in first_assemblies:
         if comparison == "viridian_artic":
             first_assembly = os.path.join(assembly, "consensus.fa")
-            second_assembly = os.path.join(second_assemblies_dir, os.path.basename(assembly), "consensus.fa")
+            second_assembly = os.path.join(second_assemblies_dir, os.path.basename(assembly), "consensus_trimmed.fa")
         if comparison == "viridian_simulated":
             first_assembly = os.path.join(assembly, "consensus.fa")
             second_assembly = os.path.join(second_assemblies_dir, os.path.basename(assembly) + ".fasta")
         if comparison == "artic_simulated":
-            first_assembly = os.path.join(assembly, "consensus.fa")
+            first_assembly = os.path.join(assembly, "consensus_trimmed.fa")
             second_assembly = os.path.join(second_assemblies_dir, os.path.basename(assembly) + ".fasta")
         input_alignment = os.path.join(temp_dir, "unaligned_" + os.path.basename(assembly) + ".fasta")
         sequences = []

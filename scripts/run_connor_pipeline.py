@@ -167,7 +167,6 @@ def run_ncov_2019_artic_nf(
         subprocess.check_output(f"gzip -9 {keep_dir}.tar", shell=True)
         subprocess.check_output(f"rm -r {keep_dir}", shell=True)
 
-
     seqs = {}
     pyfastaq.tasks.file_to_dict(old_fa, seqs)
     assert len(seqs) == 1

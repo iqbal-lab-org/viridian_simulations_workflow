@@ -8,11 +8,11 @@ library(ape)
 library(TreeDist)
 
 # load viridian simulations trees
-simulated_art_phylogeny <- readr::read_file("~/Documents/GitHub/viridian_simulations_workflow/simulated_phylogenies/ART_assemblies/uncondensed-final-tree.nh")
+simulated_art_phylogeny <- readr::read_file("~/Documents/GitHub/viridian_simulations_workflow/simulated_phylogenies_cluster/ART_assemblies/uncondensed-final-tree.nh")
 simulated_art_phylogeny <- ape::read.tree(text=simulated_art_phylogeny)
 artic_art_phylogeny <- readr::read_file("~/Documents/GitHub/viridian_simulations_workflow/artic_phylogenies/ART_assemblies/uncondensed-final-tree.nh")
 artic_art_phylogeny <- ape::read.tree(text=artic_art_phylogeny)
-viridian_art_phylogeny <- readr::read_file("~/Documents/GitHub/viridian_simulations_workflow/viridian_phylogenies/ART_assemblies/uncondensed-final-tree.nh")
+viridian_art_phylogeny <- readr::read_file("~/Documents/GitHub/viridian_simulations_workflow/viridian_phylogenies_cluster/ART_assemblies/uncondensed-final-tree.nh")
 viridian_art_phylogeny <- ape::read.tree(text=viridian_art_phylogeny)
 # calculate tree distances
 artic_simulated <- treedist(simulated_art_phylogeny, artic_art_phylogeny, check.labels = TRUE)
