@@ -561,15 +561,15 @@ rule artic_assemble:
                                                                                             params.nextflow_path,
                                                                                             params.primer_scheme,
                                                                                             regions_covered[os.path.basename(read).replace("_1.fastq", "").replace(".gz", "")]) for read in subset)
-        #for subset in tqdm(subsetted_badread):
-         #   Parallel(n_jobs=job_threads, prefer="threads")(delayed(nanopore_artic_assemble)(read,
-          #                                                                                  params.nanopore_container,
-           #                                                                                 os.path.join(params.container_dir, "ncov2019-artic-nf", "main.nf"),
-            #                                                                                params.scheme_dir,
-             #                                                                               os.path.join(output[0], "Badread_assemblies", os.path.basename(read).replace(".fastq", "")),
-              #                                                                              params.nextflow_path,
-               #                                                                             params.primer_scheme,
-                   #                                                                         regions_covered[os.path.basename(read).replace(".fastq", "").replace(".gz", "")]) for read in subset)
+        for subset in tqdm(subsetted_badread):
+            Parallel(n_jobs=job_threads, prefer="threads")(delayed(nanopore_artic_assemble)(read,
+                                                                                            params.nanopore_container,
+                                                                                            os.path.join(params.container_dir, "ncov2019-artic-nf", "main.nf"),
+                                                                                            params.scheme_dir,
+                                                                                            os.path.join(output[0], "Badread_assemblies", os.path.basename(read).replace(".fastq", "")),
+                                                                                            params.nextflow_path,
+                                                                                            params.primer_scheme,
+                                                                                            regions_covered[os.path.basename(read).replace(".fastq", "").replace(".gz", "")]) for read in subset)
 
 rule viridian_covid_truth_eval:
     input:
@@ -632,12 +632,12 @@ rule artic_covid_truth_eval:
                 input[2],
                 params.container_dir,
                 "artic")
-        #run_cte(params.primer_scheme,
-         #       badread_assemblies,
-          #      os.path.join(output[0], "Badread_assemblies"),
-           #     input[2],
-            #    params.container_dir,
-              #   "artic")
+        run_cte(params.primer_scheme,
+                badread_assemblies,
+                os.path.join(output[0], "Badread_assemblies"),
+                input[2],
+                params.container_dir,
+                "artic")
 
 rule make_artic_vcfs:
     input:
@@ -995,7 +995,7 @@ rule build_artic_phylogeny:
             if not os.path.exists(directory):
                 os.mkdir(directory)
         # build ART and Badread trees using USHER
-        for method in ["ART_assemblies"]:#, "Badread_assemblies"]:
+        for method in ["ART_assemblies", "Badread_assemblies"]:
             if method == "ART_assemblies":
                 out_dir = os.path.join(output[0], "ART_assemblies")
                 in_files = art_assemblies
