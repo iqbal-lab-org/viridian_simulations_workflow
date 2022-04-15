@@ -399,8 +399,8 @@ rule truth_vcfs:
             truth_vcf_variants.sort(key=lambda x: int(x.split("\t")[1]))
             truth_vcf[1] = "\n".join(first_line + truth_vcf_variants)
             truth_vcf = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample".join(truth_vcf)
-           # with open(os.path.join(output_dir, "04.truth.vcf"), "w") as truth_vcf_out:
-            #    truth_vcf_out.write("\n".join(truth_vcf.splitlines()[1:]))
+            with open(os.path.join(output_dir, "04.truth_dropped.vcf"), "w") as truth_vcf_out:
+                truth_vcf_out.write("\n".join(truth_vcf.splitlines()[1:]))
 
         # make directory
         if not os.path.exists(output[0]):
@@ -995,7 +995,7 @@ rule build_artic_phylogeny:
             if not os.path.exists(directory):
                 os.mkdir(directory)
         # build ART and Badread trees using USHER
-        for method in ["ART_assemblies", "Badread_assemblies"]:
+        for method in ["ART_assemblies"]:#, "Badread_assemblies"]:
             if method == "ART_assemblies":
                 out_dir = os.path.join(output[0], "ART_assemblies")
                 in_files = art_assemblies
