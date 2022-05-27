@@ -1,0 +1,66 @@
+Bootstrap: library
+From: ubuntu:20.04
+
+%setup
+    mkdir ${SINGULARITY_ROOTFS}/scripts
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+
+    # apt-get install python and git
+    apt-get update
+    apt-get install -y software-properties-common
+    add-apt-repository universe
+    apt-get install -y \
+        make \
+        gcc-10 \
+        g++-10 \
+        git \
+        python-is-python3 \
+        python3-pip \
+        python3-setuptools \
+        python3-dev \
+        libclang-dev \
+        libbz2-dev \
+        liblzma-dev \
+        wget \
+        libz-dev \
+        libcurl4-openssl-dev \
+        libncurses5-dev
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 --slave /usr/bin/g++ g++ /usr/bin/g++-10 --slave /usr/bin/gcov gcov /usr/bin/gcov-10
+    # install htslib
+    wget https://github.com/samtools/htslib/releases/download/1.14/htslib-1.14.tar.bz2
+    tar -vxjf htslib-1.14.tar.bz2
+    cd htslib-1.14
+    make
+    cd ..
+    # install samtools
+    wget https://github.com/samtools/samtools/releases/download/1.14/samtools-1.14.tar.bz2
+    tar -vxjf samtools-1.14.tar.bz2
+    mv samtools-1.14 samtools && cd samtools
+    ./configure
+    make
+    cd ..
+    # install bwa
+    git clone https://github.com/lh3/bwa.git
+    cd bwa
+    make
+    cd ..
+    # install Bedtools2
+    wget https://github.com/arq5x/bedtools2/releases/download/v2.30.0/bedtools-2.30.0.tar.gz
+    tar -zxvf bedtools-2.30.0.tar.gz
+    cd bedtools2
+    make
+    cd ..
+    # add python scripts to PATH
+    chmod +x /scripts/align_primers.py
+    echo 'export PATH=$PATH:/scripts' >> $SINGULARITY_ENVIRONMENT
+
+%files
+    scripts/align_primers.py /scripts/align_primers.py
+
+%runscript
+    python scripts/align_primers.py --bwa-path ${SINGULARITY_ROOTFS}/bwa/bwa --samtools-path ${SINGULARITY_ROOTFS}/samtools/samtools --bedtools-path ${SINGULARITY_ROOTFS}/bedtools2/bin/bamToBed "$@"
+
+%test
+    test -f /scripts/align_primers.py

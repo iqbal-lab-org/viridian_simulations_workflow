@@ -1,0 +1,8 @@
+##fileformat=VCFv4.2
+##FILTER=<ID=PASS,Description="All filters passed">
+##contig=<ID=MN908947.3,length=29903>
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##bcftools_normVersion=1.14 (pysam)+htslib-1.14 (pysam)
+##bcftools_normCommand=norm -c x -d any -f reference_genome.fasta -o /tmp/tmpy6x7fq2r reference_genome/03.probe_filtered.vcf; Date=Mon Apr  4 12:49:02 2022
+##bcftools_normCommand=norm -c x -d any -f reference_genome.fasta -o /tmp/tmp2uuu2q5j reference_genome/04.truth.vcf; Date=Mon Apr  4 12:49:02 2022
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	sample

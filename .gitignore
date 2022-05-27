@@ -127,3 +127,72 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# vm
+clockwork
+
+# snakemake
+.snakemake
+
+# reference genome index
+reference_genome.fasta.amb
+reference_genome.fasta.ann
+reference_genome.fasta.bwt
+reference_genome.fasta.fai
+reference_genome.fasta.pac
+reference_genome.fasta.sa
+
+# software
+VGsim
+art_bin_MountRainier
+viridian
+racon
+viridian_workflow
+seq-align
+bwa
+minimap2
+varifier
+samtools
+samtools-1.14.tar.bz2
+htslib-1.14
+htslib-1.14.tar.bz2
+Badread
+bedtools2
+artbinmountrainier2016.06.05linux64.tgz
+nextflow
+
+# outputs
+phastSim_output
+simulated_genomes
+newick_output.nwk
+tree_populations.txt
+amplicon_sequences
+updated_sequences
+read_output
+concatenated_reads
+viridian_assemblies
+masked_truth_assemblies
+truth_vcfs
+varifier_statistics
+varifier_statistics (copy)
+viridian_phylogenies
+simulated_phylogenies
+phylogeny_comparisons
+cte_output
+artic_assemblies
+artic_phylogenies
+artic_vcfs
+cte_artic_output
+cte_viridian_output
+
+# singularity containers
+singularity/images/*
+singularity/usher
+singularity/varifier
+singularity/viridian_workflow
+singularity/covid-truth-eval
+
+# artic pipeline
+ncov2019-artic-nf
+.nextflow
+

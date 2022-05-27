@@ -1,0 +1,11 @@
+cutadapt
+joblib
+matplotlib
+medaka
+numpy
+pandas
+pyfastaq
+pysam
+seaborn
+snakemake
+tqdm
