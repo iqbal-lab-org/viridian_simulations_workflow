@@ -11,7 +11,8 @@ recipes = ["VGsim",
            "ART",
            "Badread",
            "Map",
-           "Mafft"]
+           "Mafft",
+           "bcftools"]
 # build image
 for recipe in recipes:
     build_command = "singularity build --force --fakeroot singularity/images/"
@@ -40,7 +41,7 @@ usher_command += "docker build --no-cache -t usher_docker install/."
 usher_command += " && sudo singularity build --force usher.sif docker-daemon://usher_docker:latest && cd .."
 subprocess.run(usher_command, shell=True, check=True)
 # fetch ncov2019-artic-nf
-artic_nf_command = "git clone https://github.com/connor-lab/ncov2019-artic-nf && "
+artic_nf_command = "git clone https://github.com/Danderson123/ncov2019-artic-nf && "
 artic_nf_command += "cd ncov2019-artic-nf && sudo singularity build --force environments/illumina/artic_illumina.sif environments/illumina/Singularity && "
 artic_nf_command += "&& sudo singularity build --force environments/nanopore/artic_nanopore.sif environments/nanopore/Singularity && cd ../.."
 subprocess.run(artic_nf_command, shell=True, check=True)

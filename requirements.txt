@@ -1,5 +1,7 @@
+cutadapt
 joblib
 matplotlib
+medaka
 numpy
 pandas
 pyfastaq

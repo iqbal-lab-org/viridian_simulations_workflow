@@ -551,6 +551,16 @@ rule artic_assemble:
             scheme_end = int(primer_df.loc[primer_df['name'] == amplicons[len(amplicons)-1].split("---")[1]].reset_index(drop=True)["ref_start"][0]) + 1
             regions_covered[sample] = {"scheme_start": scheme_start,
                                        "scheme_end": scheme_end}
+    
+        for subset in tqdm(subsetted_badread):
+            Parallel(n_jobs=job_threads, prefer="threads")(delayed(nanopore_artic_assemble)(read,
+                                                                                            params.nanopore_container,
+                                                                                            os.path.join(params.container_dir, "ncov2019-artic-nf", "main.nf"),
+                                                                                            params.scheme_dir,
+                                                                                            os.path.join(output[0], "Badread_assemblies", os.path.basename(read).replace(".fastq", "")),
+                                                                                            params.nextflow_path,
+                                                                                            params.primer_scheme,
+                                                                                            regions_covered[os.path.basename(read).replace(".fastq", "").replace(".gz", "")]) for read in subset)
         for subset in tqdm(subsetted_art):
             Parallel(n_jobs=job_threads, prefer="threads")(delayed(illumina_artic_assemble)(read,
                                                                                             read.replace("_1.fastq", "_2.fastq"),
@@ -561,15 +571,6 @@ rule artic_assemble:
                                                                                             params.nextflow_path,
                                                                                             params.primer_scheme,
                                                                                             regions_covered[os.path.basename(read).replace("_1.fastq", "").replace(".gz", "")]) for read in subset)
-        for subset in tqdm(subsetted_badread):
-            Parallel(n_jobs=job_threads, prefer="threads")(delayed(nanopore_artic_assemble)(read,
-                                                                                            params.nanopore_container,
-                                                                                            os.path.join(params.container_dir, "ncov2019-artic-nf", "main.nf"),
-                                                                                            params.scheme_dir,
-                                                                                            os.path.join(output[0], "Badread_assemblies", os.path.basename(read).replace(".fastq", "")),
-                                                                                            params.nextflow_path,
-                                                                                            params.primer_scheme,
-                                                                                            regions_covered[os.path.basename(read).replace(".fastq", "").replace(".gz", "")]) for read in subset)
 
 rule viridian_covid_truth_eval:
     input:
@@ -693,7 +694,7 @@ rule make_artic_vcfs:
             badread_assemblies[i:i + threads] for i in range(0, len(badread_assemblies), threads)
         ]
         for subset in subsetted_badread:
-            Parallel(n_jobs=threads, prefer="threads")(delayed(run_varifier)(sample,
+            Parallel(n_jobs=thgit addreads, prefer="threads")(delayed(run_varifier)(sample,
                                                                             regions_covered[os.path.basename(sample)],
                                                                             input[1],
                                                                             os.path.join(output[0], "Badread_assemblies", os.path.basename(sample)),
@@ -708,7 +709,9 @@ rule assess_assemblies:
         split_amplicons=rules.split_amplicons.output,
         artic_vcfs=rules.make_artic_vcfs.output,
         artic_assemblies=rules.artic_assemble.output,
-        unmasked_geomes=rules.split_sequences.output
+        unmasked_genomes=rules.split_sequences.output,
+        artic_cte=rules.artic_covid_truth_eval.output,
+        viridian_cte=rules.viridian_covid_truth_eval.output
     params:
         container_dir=config["container_directory"],
         scheme=config['primer_scheme']
@@ -747,9 +750,6 @@ rule assess_assemblies:
                                             threads,
                                             output[0],
                                             params.container_dir)
-        # generate plot for results of covid truth eval output
-        #generate_heatmap(os.path.join(input[5], "ART_assemblies", "OUT", "Processing"), "ART", output[0])
-        #generate_heatmap(os.path.join(input[5], "Badread_assemblies", "OUT", "Processing"), "Badread", output[0])
         # generate plots for the artic assemblies
         artic_art_assemblies = glob.glob(input[6] + '/ART_assemblies/*')
         artic_badread_assemblies = glob.glob(input[6] + '/Badread_assemblies/*')
@@ -769,16 +769,24 @@ rule assess_assemblies:
                                             input[3],
                                             input[2],
                                             input[1],
-                                            "ART",
+                                            "artic_Badread",
                                             threads,
                                             output[0],
-                                            params.container_dir)
+                                            params.container_dir,
+                                            input[5],
+                                            os.path.join(input[0], "Badread_assemblies"))
         # let's see what happens if we assess SNPs called by the assemblers instead of truth SNPs
         plot_varifier_calls(viridian_art_snps,
                             viridian_badread_snps,
                             artic_art_snps,
                             artic_badread_snps,
                             output[0])
+        # generate heatmap plots for the base by base calls by cte
+                # generate plot for results of covid truth eval output
+        generate_heatmap(os.path.join(input[8], "ART_assemblies", "OUT", "Processing"), "ART", output[0])
+        generate_heatmap(os.path.join(input[8], "Badread_assemblies", "OUT", "Processing"), "Badread", output[0])
+        generate_heatmap(os.path.join(input[9], "ART_assemblies", "OUT", "Processing"), "ART", output[0])
+        generate_heatmap(os.path.join(input[9], "Badread_assemblies", "OUT", "Processing"), "Badread", output[0])
         # generate matrices of pairwise SNP comparisons in viridian vs artic assemblies
         pairwise_compare(art_assemblies,
                          os.path.join(input[6], "ART_assemblies"),
@@ -833,7 +841,6 @@ rule build_viridian_phylogeny:
             if method == badread_assemblies:
                 out_dir =  os.path.join(output[0], "Badread_assemblies")
             # make vcf files to add in batches
-            file_no = 0
             batched_files = [
                 method[i:i + params.batch_size] for i in range(0, len(method), params.batch_size)
             ]
@@ -841,9 +848,8 @@ rule build_viridian_phylogeny:
             for batch in tqdm(batched_files):
                 out_vcfs.append(combine_vcfs(batch,
                                 out_dir,
-                                file_no,
-                                "viridian"))
-                file_no += 1
+                                "viridian",
+                                input[0]))
             # make trees with one sample to start the phylogeny
             if method == art_assemblies:
                 vcf_dir = os.path.join(input[0], "ART_assemblies")
@@ -917,18 +923,15 @@ rule build_simulated_phylogeny:
             if method == badread_assemblies:
                 out_dir =  os.path.join(output[0], "Badread_assemblies")
             # make vcf files to add in batches
-            file_no = 0
             batched_files = [
                 method[i:i + params.batch_size] for i in range(0, len(method), params.batch_size)
             ]
             out_vcfs = []
-            for batch in tqdm(batched_files):
-                out_vcfs.append(combine_vcfs(batch,
-                                out_dir,
-                                file_no,
-                                "simulated",
-                                input[2]))
-                file_no += 1
+            out_vcfs += Parallel(n_jobs=threads, prefer="threads")(delayed(combine_vcfs)(batch,
+                                                                                        out_dir,
+                                                                                        "simulated",
+                                                                                        input[0],
+                                                                                        input[2]) for batch in batched_files)
             # make trees with one sample to start the phylogeny
             vcf_dir = input[2]
             if method == art_assemblies:
@@ -962,7 +965,8 @@ rule build_artic_phylogeny:
         simulated_assemblies=rules.mask_assemblies.output,
         viridian_assemblies=rules.run_viridian.output,
         artic_vcfs=rules.make_artic_vcfs.output,
-        reference_genome=config["reference_genome"]
+        reference_genome=config["reference_genome"],
+        artic_assemblies=rules.artic_assemble.output
     output:
         directory("artic_phylogenies")
     threads:
@@ -995,7 +999,7 @@ rule build_artic_phylogeny:
             if not os.path.exists(directory):
                 os.mkdir(directory)
         # build ART and Badread trees using USHER
-        for method in ["ART_assemblies"]:#, "Badread_assemblies"]:
+        for method in ["ART_assemblies", "Badread_assemblies"]:
             if method == "ART_assemblies":
                 out_dir = os.path.join(output[0], "ART_assemblies")
                 in_files = art_assemblies
@@ -1003,18 +1007,15 @@ rule build_artic_phylogeny:
                 out_dir =  os.path.join(output[0], "Badread_assemblies")
                 in_files = badread_assemblies
             # make vcf files to add in batches
-            file_no = 0
             batched_files = [
                 in_files[i:i + params.batch_size] for i in range(0, len(in_files), params.batch_size)
             ]
             out_vcfs = []
-            for batch in tqdm(batched_files):
-                out_vcfs.append(combine_vcfs(batch,
-                                out_dir,
-                                file_no,
-                                "artic",
-                                input[2]))
-                file_no += 1
+            out_vcfs += Parallel(n_jobs=threads, prefer="threads")(delayed(combine_vcfs)(batch,
+                                                                                        out_dir,
+                                                                                        "artic",
+                                                                                        input[4],
+                                                                                        input[2]) for batch in batched_files)
             # make trees with one sample to start the phylogeny
             vcf_dir = input[2]
             if method == "ART_assemblies":

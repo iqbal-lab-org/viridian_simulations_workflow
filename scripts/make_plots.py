@@ -245,6 +245,8 @@ def generate_heatmap(eval_dir, method, output_dir):
     call_dict = {}
     for subdir in tqdm(cte_files):
         per_position = pd.read_csv(os.path.join(subdir, "per_position.tsv"), sep='\t')
+      # for category in range(len(per_position["Truth_category"])):
+           # if per_position["SNP_true_alt"][category] == "SNP_true_alt"
         for pos in range(len(per_position["Ref_pos"])):
             if not per_position["Ref_pos"][pos] in call_dict:
                 call_dict[per_position["Ref_pos"][pos]] = []

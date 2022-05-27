@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -106,7 +107,8 @@ def run_ncov_2019_artic_nf(
         # Make a fake guppy barcoded directory
         barcode_dir = os.path.join(reads_dir_abs, "barcode01")
         os.mkdir(barcode_dir)
-        os.symlink(os.path.abspath(ont), os.path.join(os.path.abspath(barcode_dir), "sample_pass_barcode01_foo_0.fastq.gz"))
+        shutil.copy(os.path.abspath(ont), os.path.join(os.path.abspath(barcode_dir), "sample_pass_barcode01_foo_0.fastq.gz"))
+       # os.symlink(os.path.abspath(ont), os.path.join(os.path.abspath(barcode_dir), "sample_pass_barcode01_foo_0.fastq.gz"))
         tech_opt = "--medaka"
         cpus = 1
         reads_opt = "--basecalled_fastq"
@@ -129,10 +131,9 @@ def run_ncov_2019_artic_nf(
         print("executor.cpus =", cpus,file=f)
         print("process.cpus =", cpus, file=f)
 
-    command = " ".join([
+    command = [
         "/usr/bin/time -v",
         nextflow_path + " run", os.path.abspath(nf_script),
-        "-with-singularity", sif,
         "-work-dir", work_dir,
         "-ansi-log false",
         "-c", config_file,
@@ -143,7 +144,10 @@ def run_ncov_2019_artic_nf(
         "--scheme", "SARS-CoV-2",
         "--prefix out",
         reads_opt, reads_dir,
-    ])
+    ]
+    #if ont is None:
+    command += ["-with-singularity", sif]
+    command = " ".join(command)
     completed_process = syscall(command)
     log_info["nextflow"] = {
         "stdout": completed_process.stdout.rstrip().split("\n"),

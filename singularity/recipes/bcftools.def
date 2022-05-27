@@ -1,0 +1,22 @@
+Bootstrap: library
+From: ubuntu:20.04
+
+%setup
+    mkdir ${SINGULARITY_ROOTFS}/viridian_simulations_workflow
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+
+    cd ${SINGULARITY_ROOTFS}/viridian_simulations_workflow
+    # apt-get install 
+    apt-get update
+    apt-get install -y software-properties-common
+    add-apt-repository universe
+    apt-get install -y \
+        wget \
+        gcc-10 \
+        g++-10 \
+        bcftools \
+        
+%runscript
+    bcftools "$@"
