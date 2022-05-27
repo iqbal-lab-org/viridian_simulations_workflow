@@ -15,7 +15,10 @@ source ./venv/bin/activate
 pip3 install -r requirements.txt
 # build the containers
 python3 singularity/build_images.py
-Usage
+```
+
+## Usage
+```
 snakemake --cores 1
 ```
 ## Configuration
