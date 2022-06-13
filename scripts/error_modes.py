@@ -190,7 +190,7 @@ def align_primers(genomic_sequence,
     primer_df['end'] = aligned_ends
     # remove the temp_dir
     try:
-        shutil.rmtree(temp_dir)
+        shutil.rmtree(temp_dir, ignore_errors=True)
     except FileNotFoundError:
         pass
     return primer_df, alignment_stats
