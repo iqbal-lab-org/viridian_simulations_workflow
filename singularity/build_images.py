@@ -6,13 +6,13 @@ import subprocess
 if not os.path.exists("singularity/images"):
     os.mkdir("singularity/images")
 # iterate through list of recipes to build the image
-recipes = []#"VGsim",
-           #"phastSim",
-           #"ART",
-           #"Badread",
-           #"Map",
-           #"Mafft",
-           #"bcftools"]
+recipes = ["VGsim",
+           "phastSim",
+           "ART",
+           "Badread",
+           "Map",
+           "Mafft",
+           "bcftools"]
 # build image
 for recipe in recipes:
     build_command = "singularity build --force --fakeroot singularity/images/"
@@ -25,15 +25,15 @@ viridian_command += " && cd viridian_workflow && "
 viridian_command += "sudo singularity build --force viridian_workflow.img Singularity.def && cd .."
 subprocess.run(viridian_command, shell=True, check=True)
 # build varifier image
-varifier_command = "git clone https://github.com/iqbal-lab-org/varifier"
+varifier_command = "cd singularity && git clone https://github.com/iqbal-lab-org/varifier"
 varifier_command += " && cd varifier && "
 varifier_command += "sudo singularity build --force varifier.img Singularity.def && cd .."
 subprocess.run(varifier_command, shell=True, check=True)
 # build cte image
-varifier_command = "cd singularity && git clone https://github.com/iqbal-lab-org/covid-truth-eval"
-varifier_command += " && cd covid-truth-eval && "
-varifier_command += "sudo singularity build --force cte.img Singularity.def && cd .."
-subprocess.run(varifier_command, shell=True, check=True)
+cte_command = "cd singularity && git clone https://github.com/iqbal-lab-org/covid-truth-eval"
+cte_command += " && cd covid-truth-eval && "
+cte_command += "sudo singularity build --force cte.img Singularity.def && cd .."
+subprocess.run(cte_command, shell=True, check=True)
 # build usher image
 usher_command = "cd singularity && git clone https://github.com/yatisht/usher.git"
 usher_command += " && cd usher && "
