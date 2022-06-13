@@ -694,7 +694,7 @@ rule make_artic_vcfs:
             badread_assemblies[i:i + threads] for i in range(0, len(badread_assemblies), threads)
         ]
         for subset in subsetted_badread:
-            Parallel(n_jobs=thgit addreads, prefer="threads")(delayed(run_varifier)(sample,
+            Parallel(n_jobs=threads, prefer="threads")(delayed(run_varifier)(sample,
                                                                             regions_covered[os.path.basename(sample)],
                                                                             input[1],
                                                                             os.path.join(output[0], "Badread_assemblies", os.path.basename(sample)),

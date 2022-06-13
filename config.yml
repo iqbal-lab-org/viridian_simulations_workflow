@@ -1,4 +1,4 @@
-threads: 8
+threads: 64
 reference_genome: reference_genome.fasta
 divide_genomes: False
 proportion_illumina: 0.90
@@ -12,7 +12,7 @@ VGsim:
   iterations: 10000000
   pp_population_model_file: VGsim_params/pp_population.pp
   mg_population_model_file: VGsim_params/mg_population.mg
-  sample_size: 100
+  sample_size: 10000
 
 phastSim:
   tree_file: newick_output.nwk
@@ -31,9 +31,9 @@ simulate_reads:
   illumina_read_length: 250
 
 artic_assemble:
-  nextflow_path: ~/Documents/GitHub/viridian_simulations_workflow/nextflow
-  illumina_workflow_container: ~/Documents/GitHub/viridian_simulations_workflow/singularity/ncov2019-artic-nf/artic-ncov2019-illumina.sif
-  nanopore_workflow_container: ~/Documents/GitHub/viridian_simulations_workflow/singularity/ncov2019-artic-nf/artic-ncov2019-nanopore.sif
+  nextflow_path: nextflow
+  illumina_workflow_container: singularity/ncov2019-artic-nf/artic-ncov2019-illumina.sif
+  nanopore_workflow_container: singularity/ncov2019-artic-nf/artic-ncov2019-nanopore.sif
 
 mask_assemblies:
   apply_mask: False
