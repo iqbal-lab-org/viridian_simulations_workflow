@@ -177,7 +177,7 @@ def run_ncov_2019_artic_nf(
     seq = list(seqs.values())[0]
     if sample_name is not None:
         seq.id = sample_name + " " + seq.id
-    with open("consensus.fa", "w") as f:
+    with open("masked.fasta", "w") as f:
         print(seq, file=f)
 
     if not debug:

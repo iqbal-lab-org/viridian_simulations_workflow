@@ -482,7 +482,7 @@ rule artic_assemble:
             shell_command += "gunzip " + forward_rd + " " + reverse_rd
             shell(shell_command)
             # cut off ends of assemblies that lie outside of the amplicon scheme
-            filename = os.path.join(output_dir.replace(".gz", ""), "consensus.fa")
+            filename = os.path.join(output_dir.replace(".gz", ""), "masked.fasta")
             sample_name, sample_sequence = clean_genome(filename)
             sample_sequence = list(sample_sequence)
             sample_sequence = sample_sequence[regions_covered["scheme_start"]: regions_covered["scheme_end"]]
@@ -514,7 +514,7 @@ rule artic_assemble:
             shell_command += "gunzip " + read_file
             shell(shell_command)
             # cut off ends of assemblies that lie outside of the amplicon scheme
-            filename = os.path.join(output_dir.replace(".gz", ""), "consensus.fa")
+            filename = os.path.join(output_dir.replace(".gz", ""), "masked.fasta")
             sample_name, sample_sequence = clean_genome(filename)
             sample_sequence = list(sample_sequence)
             sample_sequence = sample_sequence[regions_covered["scheme_start"]: regions_covered["scheme_end"]]
@@ -807,6 +807,16 @@ rule assess_assemblies:
         count_dropped_bases(input[4],
                             output[0])
 
+rule build_usher_phylogenies:
+    input:
+        viridian_assemblies=rules.run_viridian.output,
+        artic_assemblies=rules.artic_assemble.output
+    output:
+        directory("usher_phylogenies")
+    threads:
+        config["threads"]
+    shell:
+        "bash scripts/ucscVcfUsher.sh"
 
 rule build_viridian_phylogeny:
     input:
@@ -828,7 +838,7 @@ rule build_viridian_phylogeny:
         # concatenate assemblies into single file for alignment
         art_fasta = []
         for assem in art_assemblies:
-            with open(os.path.join(assem, "consensus.fa"), "r") as inAssem:
+            with open(os.path.join(assem, "masked.fasta"), "r") as inAssem:
                 art_fasta.append(">" + os.path.basename(assem) + "\n" + "".join(inAssem.read().splitlines()[1:]))
         # make output directory if it does not already exist
         for directory in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
