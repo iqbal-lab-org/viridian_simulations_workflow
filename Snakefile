@@ -119,7 +119,10 @@ rule simulate_reads:
             if not os.path.exists(output_dir):
                 os.mkdir(output_dir)
             for amplicon in sample_coverages[sample_name]:
-                coverage = sample_coverages[sample_name][amplicon]
+                try:
+                    coverage = sample_coverages[sample_name][amplicon]
+                except:
+                    continue
                 amplicon_file = os.path.join(genome, amplicon + '.fasta')
                 read_file = os.path.join(output_dir, amplicon)
                 shell_command = 'singularity run ' + container_dir +'/images/ART.img --quiet -amp -p -sam -na -i ' + amplicon_file + \
@@ -135,7 +138,10 @@ rule simulate_reads:
             if not os.path.exists(output_dir):
                 os.mkdir(output_dir)
             for amplicon in sample_coverages[sample_name]:
-                coverage = sample_coverages[sample_name][amplicon]
+                try:
+                    coverage = sample_coverages[sample_name][amplicon]
+                except:
+                    continue
                 amplicon_file = os.path.join(genome, amplicon + '.fasta')
                 read_file = os.path.join(output_dir, amplicon) + '.fastq.gz'
                 # skip badread if the coverage is 0
@@ -818,247 +824,9 @@ rule build_usher_phylogenies:
     shell:
         "bash scripts/ucscVcfUsher.sh"
 
-rule build_viridian_phylogeny:
-    input:
-        viridian_assemblies=rules.run_viridian.output,
-        reference_genome=config["reference_genome"]
-    output:
-        directory("viridian_phylogenies")
-    threads:
-        config["threads"]
-    params:
-        batch_size=config["phylogenies"]["batch_size"]
-    run:
-        # list assemblies
-        art_assemblies = glob.glob(os.path.join(input[0], "ART_assemblies", "*"))
-        badread_assemblies = glob.glob(os.path.join(input[0], "Badread_assemblies", "*"))
-        # order assemblies so ART and Badread assemblies are added to the tree in the same order
-        sorted(art_assemblies, key=str.lower)
-        sorted(badread_assemblies, key=str.lower)
-        # concatenate assemblies into single file for alignment
-        art_fasta = []
-        for assem in art_assemblies:
-            with open(os.path.join(assem, "consensus.fa"), "r") as inAssem:
-                art_fasta.append(">" + os.path.basename(assem) + "\n" + "".join(inAssem.read().splitlines()[1:]))
-        # make output directory if it does not already exist
-        for directory in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
-            if not os.path.exists(directory):
-                os.mkdir(directory)
-        # build ART and Badread trees using USHER
-        for method in [art_assemblies, badread_assemblies]:
-            if method == art_assemblies:
-                out_dir = os.path.join(output[0], "ART_assemblies")
-            if method == badread_assemblies:
-                out_dir =  os.path.join(output[0], "Badread_assemblies")
-            # make vcf files to add in batches
-            batched_files = [
-                method[i:i + params.batch_size] for i in range(0, len(method), params.batch_size)
-            ]
-            out_vcfs = []
-            for batch in tqdm(batched_files):
-                out_vcfs.append(combine_vcfs(batch,
-                                out_dir,
-                                "viridian",
-                                input[0]))
-            # make trees with one sample to start the phylogeny
-            if method == art_assemblies:
-                vcf_dir = os.path.join(input[0], "ART_assemblies")
-                tree_dir, tree_file = initiate_phylogeny("ART",
-                                                         method,
-                                                         input[0],
-                                                         vcf_dir,
-                                                         "viridian",
-                                                         output[0],
-                                                         input[1])
-            else:
-                vcf_dir = os.path.join(input[0], "Badread_assemblies")
-                tree_dir, tree_file = initiate_phylogeny("Badread",
-                                                         method,
-                                                         input[0],
-                                                         vcf_dir,
-                                                         "viridian",
-                                                         output[0],
-                                                         input[1])
-            for combined in out_vcfs:
-                # add the samples to the phylogeny in batches
-                add_samples(combined,
-                            tree_file,
-                            tree_dir,
-                            threads)
-                # optimise the tree after every batch is added
-                optimise_phylogeny(tree_file,
-                                   threads)
-
-rule build_simulated_phylogeny:
-    input:
-        simulated_assemblies=rules.mask_assemblies.output,
-        viridian_assemblies=rules.run_viridian.output,
-        truth_vcfs=rules.truth_vcfs.output,
-        reference_genome=config["reference_genome"]
-    output:
-        directory("simulated_phylogenies")
-    threads:
-        config["threads"]
-    params:
-        batch_size=config["phylogenies"]["batch_size"]
-    run:
-        # list assemblies
-        viridian_art_assemblies = glob.glob(os.path.join(input[1], "ART_assemblies", "*"))
-        viridian_badread_assemblies = glob.glob(os.path.join(input[1], "Badread_assemblies", "*"))
-        # order assemblies so ART and Badread assemblies are added to the tree in the same order
-        sorted(viridian_art_assemblies, key=str.lower)
-        sorted(viridian_badread_assemblies, key=str.lower)
-        # need to assign the simulated assemblies to either ART or Badread, depending on the viridian assembly assignments
-        art_assemblies = []
-        for a in viridian_art_assemblies:
-            assem = os.path.join(input[0], os.path.basename(a))
-            art_assemblies.append(assem)
-        badread_assemblies = []
-        for a in viridian_badread_assemblies:
-            assem = os.path.join(input[0], os.path.basename(a))
-            badread_assemblies.append(assem)
-        # concatenate assemblies into single file for alignment
-        art_fasta = []
-        for assem in art_assemblies:
-            with open(assem + ".fasta", "r") as inAssem:
-                art_fasta.append(">" + os.path.basename(assem) + "\n" + "".join(inAssem.read().splitlines()[1:]))
-        # make output directory if it does not already exist
-        for directory in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
-            if not os.path.exists(directory):
-                os.mkdir(directory)
-        # build ART and Badread trees using USHER
-        for method in [art_assemblies, badread_assemblies]:
-            if method == art_assemblies:
-                out_dir = os.path.join(output[0], "ART_assemblies")
-            if method == badread_assemblies:
-                out_dir =  os.path.join(output[0], "Badread_assemblies")
-            # make vcf files to add in batches
-            batched_files = [
-                method[i:i + params.batch_size] for i in range(0, len(method), params.batch_size)
-            ]
-            out_vcfs = []
-            out_vcfs += Parallel(n_jobs=threads, prefer="threads")(delayed(combine_vcfs)(batch,
-                                                                                        out_dir,
-                                                                                        "simulated",
-                                                                                        input[0],
-                                                                                        input[2]) for batch in batched_files)
-            # make trees with one sample to start the phylogeny
-            vcf_dir = input[2]
-            if method == art_assemblies:
-                tree_dir, tree_file = initiate_phylogeny("ART",
-                                                         method,
-                                                         input[0],
-                                                         vcf_dir,
-                                                         "simulated",
-                                                         output[0],
-                                                         input[3])
-            else:
-                tree_dir, tree_file = initiate_phylogeny("Badread",
-                                                         method,
-                                                         input[0],
-                                                         vcf_dir,
-                                                         "simulated",
-                                                         output[0],
-                                                         input[3])
-            for combined in out_vcfs:
-                # add the samples to the phylogeny in batches
-                add_samples(combined,
-                            tree_file,
-                            tree_dir,
-                            threads)
-                # optimise the tree after every batch is added
-                optimise_phylogeny(tree_file,
-                                    threads)
-
-rule build_artic_phylogeny:
-    input:
-        simulated_assemblies=rules.mask_assemblies.output,
-        viridian_assemblies=rules.run_viridian.output,
-        artic_vcfs=rules.make_artic_vcfs.output,
-        reference_genome=config["reference_genome"],
-        artic_assemblies=rules.artic_assemble.output
-    output:
-        directory("artic_phylogenies")
-    threads:
-        config["threads"]
-    params:
-        batch_size=config["phylogenies"]["batch_size"]
-    run:
-        # list assemblies
-        viridian_art_assemblies = glob.glob(os.path.join(input[1], "ART_assemblies", "*"))
-        viridian_badread_assemblies = glob.glob(os.path.join(input[1], "Badread_assemblies", "*"))
-        # order assemblies so ART and Badread assemblies are added to the tree in the same order
-        sorted(viridian_art_assemblies, key=str.lower)
-        sorted(viridian_badread_assemblies, key=str.lower)
-        # need to assign the simulated assemblies to either ART or Badread, depending on the viridian assembly assignments
-        art_assemblies = []
-        for a in viridian_art_assemblies:
-            assem = os.path.join(input[0], os.path.basename(a))
-            art_assemblies.append(assem)
-        badread_assemblies = []
-        for a in viridian_badread_assemblies:
-            assem = os.path.join(input[0], os.path.basename(a))
-            badread_assemblies.append(assem)
-        # concatenate assemblies into single file for alignment
-        art_fasta = []
-        for assem in art_assemblies:
-            with open(assem + ".fasta", "r") as inAssem:
-                art_fasta.append(">" + os.path.basename(assem) + "\n" + "".join(inAssem.read().splitlines()[1:]))
-        # make output directory if it does not already exist
-        for directory in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
-            if not os.path.exists(directory):
-                os.mkdir(directory)
-        # build ART and Badread trees using USHER
-        for method in ["ART_assemblies", "Badread_assemblies"]:
-            if method == "ART_assemblies":
-                out_dir = os.path.join(output[0], "ART_assemblies")
-                in_files = art_assemblies
-            if method == "Badread_assemblies":
-                out_dir =  os.path.join(output[0], "Badread_assemblies")
-                in_files = badread_assemblies
-            # make vcf files to add in batches
-            batched_files = [
-                in_files[i:i + params.batch_size] for i in range(0, len(in_files), params.batch_size)
-            ]
-            out_vcfs = []
-            out_vcfs += Parallel(n_jobs=threads, prefer="threads")(delayed(combine_vcfs)(batch,
-                                                                                        out_dir,
-                                                                                        "artic",
-                                                                                        input[4],
-                                                                                        input[2]) for batch in batched_files)
-            # make trees with one sample to start the phylogeny
-            vcf_dir = input[2]
-            if method == "ART_assemblies":
-                tree_dir, tree_file = initiate_phylogeny("ART",
-                                                         in_files,
-                                                         input[0],
-                                                         vcf_dir,
-                                                         "artic",
-                                                         output[0],
-                                                         input[3])
-            else:
-                tree_dir, tree_file = initiate_phylogeny("Badread",
-                                                         in_files,
-                                                         input[0],
-                                                         vcf_dir,
-                                                         "artic",
-                                                         output[0],
-                                                         input[3])
-            for combined in out_vcfs:
-                # add the samples to the phylogeny in batches
-                add_samples(combined,
-                            tree_file,
-                            tree_dir,
-                            threads)
-                # optimise the tree after every batch is added
-                optimise_phylogeny(tree_file,
-                                    threads)
-
 rule compare_phylogenies:
     input:
-        viridian_phylogeny=rules.build_viridian_phylogeny.output,
-        simulated_phylogeny=rules.build_simulated_phylogeny.output,
-        artic_phylogeny=rules.build_artic_phylogeny.output
+        phylogenies=rules.build_usher_phylogenies.output
     output:
         directory("phylogeny_comparisons")
     threads:
