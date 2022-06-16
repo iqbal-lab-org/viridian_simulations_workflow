@@ -94,11 +94,12 @@ rule split_amplicons:
             --match-mean {params.match_coverage_mean} --match-sd {params.match_coverage_sd} --mismatch-mean {params.mismatch_coverage_mean} \
             --mismatch-sd {params.mismatch_coverage_sd} --threads {threads}"
 
-rule simulate_reads:
+
+rule simulate_badread_reads:
     input:
         rules.split_amplicons.output
     output:
-        directory('read_output')
+        directory('ART_read_output')
     params:
         divide_genomes=config["divide_genomes"],
         prop_illumina=config['proportion_illumina'],
@@ -129,6 +130,48 @@ rule simulate_reads:
                         ' -l ' + read_length + ' -f ' + str(coverage) + ' -o ' + read_file
                 shell(shell_command)
 
+        # make output dirs
+        if not os.path.exists(output[0]):
+            os.mkdir(output[0])
+        # get rid of undeleted temp files
+        shell("rm -rf {input}/tmp*")
+        # list samples and import coverages
+        samples = glob.glob(input[0] + '/*/')
+        with open(os.path.join(input[0], 'amplicon_coverages.pickle'), 'rb') as coverageHandle:
+            sample_coverages = pickle.load(coverageHandle)
+        # if specified, assign samples as illumina or nanopore reads
+        if params.divide_genomes:
+            random.seed(params.seed)
+            random.shuffle(samples)
+            num_illumina = round(len(samples)*float(params.prop_illumina))
+            illumina_samples = samples[:num_illumina]
+        else:
+            illumina_samples = samples
+        # parallelise ART
+        illumina_list = [
+            illumina_samples[i:i + threads] for i in range(0, len(illumina_samples), threads)
+        ]
+        for illumina_subset in tqdm(illumina_list):
+            Parallel(n_jobs=threads, prefer="threads")(delayed(simulate_ART_reads)(genome,
+                                                                                    output[0],
+                                                                                    sample_coverages,
+                                                                                    str(params.read_length),
+                                                                                    params.container_dir) for genome in illumina_subset)
+
+rule simulate_badread_reads:
+    input:
+        rules.split_amplicons.output
+    output:
+        directory('Badread_read_output')
+    params:
+        divide_genomes=config["divide_genomes"],
+        prop_illumina=config['proportion_illumina'],
+        read_length=config["simulate_reads"]["illumina_read_length"],
+        seed=config["seed"],
+        container_dir=config["container_directory"]
+    threads:
+        config['threads']
+    run:
         def simulate_badreads(genome,
                               output,
                               sample_coverages,
@@ -153,12 +196,8 @@ rule simulate_reads:
             return
 
         # make output dirs
-        art_output = os.path.join(output[0], 'ART_output')
-        badread_output = os.path.join(output[0], 'Badread_output')
-        directories = [output[0], art_output, badread_output]
-        for subdir in directories:
-            if not os.path.exists(subdir):
-                os.mkdir(subdir)
+        if not os.path.exists(output[0]):
+            os.mkdir(output[0])
         # get rid of undeleted temp files
         shell("rm -rf {input}/tmp*")
         # list samples and import coverages
@@ -167,43 +206,31 @@ rule simulate_reads:
             sample_coverages = pickle.load(coverageHandle)
         # if specified, assign samples as illumina or nanopore reads
         if params.divide_genomes:
-            random.seed(params.seed)
-            random.shuffle(samples)
+            samples = []
             num_illumina = round(len(samples)*float(params.prop_illumina))
-            illumina_samples = samples[:num_illumina]
             nanopore_samples = samples[num_illumina:]
         else:
-            illumina_samples = samples
             nanopore_samples = samples
-        # parallelise ART
-        illumina_list = [
-            illumina_samples[i:i + threads] for i in range(0, len(illumina_samples), threads)
-        ]
-        for illumina_subset in tqdm(illumina_list):
-            Parallel(n_jobs=threads, prefer="threads")(delayed(simulate_ART_reads)(genome,
-                                                                                    art_output,
-                                                                                    sample_coverages,
-                                                                                    str(params.read_length),
-                                                                                    params.container_dir) for genome in illumina_subset)
         # parallelise Badread
         nanopore_list = [
             nanopore_samples[i:i + threads] for i in range(0, len(nanopore_samples), threads)
         ]
         for nanopore_subset in tqdm(nanopore_list):
             Parallel(n_jobs=threads, prefer="threads")(delayed(simulate_badreads)(genome,
-                                                                                    badread_output,
+                                                                                    output[0],
                                                                                     sample_coverages,
                                                                                     params.container_dir) for genome in nanopore_subset)
 
 rule cat_reads:
     input:
-        rules.simulate_reads.output
+        art_reads=rules.simulate_art_reads.output,
+        badreads=rules.simulate_badread_reads.output
     output:
         directory('concatenated_reads')
     run:
         # list samples
-        art_samples = glob.glob(input[0] + '/ART_output/*/')
-        badread_samples = glob.glob(input[0] + '/Badread_output/*/')
+        art_samples = glob.glob(input[0] + '/*/')
+        badread_samples = glob.glob(input[1] + '/*/')
         if not os.path.exists(output[0]):
             os.mkdir(output[0])
             os.mkdir(os.path.join(output[0], "ART_output"))
