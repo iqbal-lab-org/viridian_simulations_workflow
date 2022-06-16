@@ -37,10 +37,6 @@ def run_cte(primer_scheme,
         else:
             assembly_file = os.path.join(assem, "consensus.fa")
             #assembly_file = os.path.join(assem, "masked.fasta")
-            # need to add a sample header to the fasta
-            #with open(assembly_file, "r") as inFasta:
-            #    contents = inFasta.read()
-            #    outFasta.write(">" + os.path.basename(assem) + "\n" + contents)
         manifest.append(os.path.basename(assem) + "\t" + vcf_file + "\t" + assembly_file + "\t" + scheme)
     # save metadata as tsv file
     with open(os.path.join(outdir, "manifest.tsv"), "w") as manifestOut:

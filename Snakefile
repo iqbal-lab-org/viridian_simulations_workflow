@@ -159,6 +159,8 @@ rule simulate_reads:
         for subdir in directories:
             if not os.path.exists(subdir):
                 os.mkdir(subdir)
+        # get rid of undeleted temp files
+        shell("rm -rf {input}/tmp*")
         # list samples and import coverages
         samples = glob.glob(input[0] + '/*/')
         with open(os.path.join(input[0], 'amplicon_coverages.pickle'), 'rb') as coverageHandle:
@@ -199,6 +201,7 @@ rule cat_reads:
     output:
         directory('concatenated_reads')
     run:
+        # list samples
         art_samples = glob.glob(input[0] + '/ART_output/*/')
         badread_samples = glob.glob(input[0] + '/Badread_output/*/')
         if not os.path.exists(output[0]):
