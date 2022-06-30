@@ -39,4 +39,4 @@ mask_assemblies:
   apply_mask: False
 
 phylogenies:
-  batch_size: 20
+  batch_size: 10000
