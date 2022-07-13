@@ -42,8 +42,8 @@ usher_command += " && sudo singularity build --force usher.sif docker-daemon://u
 subprocess.run(usher_command, shell=True, check=True)
 # fetch ncov2019-artic-nf
 artic_nf_command = "cd singularity && git clone https://github.com/Danderson123/ncov2019-artic-nf && "
-artic_nf_command += "cd ncov2019-artic-nf && sudo singularity build --force environments/illumina/artic_illumina.sif environments/illumina/Singularity && "
-artic_nf_command += "&& sudo singularity build --force environments/nanopore/artic_nanopore.sif environments/nanopore/Singularity && cd ../.."
+artic_nf_command += "cd ncov2019-artic-nf && sudo singularity build --force artic_illumina.sif environments/illumina/Singularity && "
+artic_nf_command += "&& sudo singularity build --force artic_nanopore.sif environments/nanopore/Singularity && cd ../.."
 subprocess.run(artic_nf_command, shell=True, check=True)
 # write out file stating when containers were built for version control
 now = datetime.now()
