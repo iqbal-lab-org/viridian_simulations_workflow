@@ -16,27 +16,22 @@ configfile: 'config.yml'
 
 def viridian_art_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    samples = [os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s]
     return expand("viridian_ART_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
 
 def viridian_badread_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    samples = [os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s]
     return expand("viridian_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
 
 def artic_art_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    samples = [os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s]
     return expand("artic_ART_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
 
 def artic_badread_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    samples = [os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s]
     return expand("artic_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
 
 def truth_vcf_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    samples = [os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s]
     return expand("truth_vcfs/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
 
 rule all:
@@ -44,8 +39,11 @@ rule all:
         viridian_art_input,
         viridian_badread_input,
         artic_art_input,
-        artic_badread_input
-
+        artic_badread_input,
+        truth_vcf_input,
+        "cte_viridian_output",
+        "cte_artic_output",
+        "usher_phylogenies"
 
 rule VGsim_tree:
     input:
@@ -217,10 +215,8 @@ rule truth_vcfs:
                 truth_vcf_out.write("\n".join(truth_vcf.splitlines()[1:]))
 
         # make directory
-        if not os.path.exists(output[1]):
-            os.mkdir(output[1])
-        # load list of assemblies
-        assemblies = glob.glob(os.path.join(input[0], "*.fasta"))
+        if not os.path.exists(os.path.dirname(output[0])):
+            os.mkdir(os.path.dirname(output[0]))
         # import the amplicon statistics file to extract what parts of the assembly are covered by amplicons
         with open(os.path.join(input[2], 'amplicon_statistics.pickle'), 'rb') as statIn:
             amplicon_stats = pickle.load(statIn)
@@ -401,7 +397,7 @@ rule cat_badread_reads:
                 with open(new_name, 'wb') as f_out:
                     shutil.copyfileobj(f_in, f_out)
             new_filenames.append(new_name)
-        filename = output[0] + '.fastq'
+        filename = output[0]
         concat_command = 'cat ' + ' '.join(new_filenames) + ' > ' + filename
         shell(concat_command)
 
@@ -584,9 +580,7 @@ rule artic_badread_assemble:
             """run nanopore artic nextflow pipeline"""
             if not os.path.exists(read_file + ".gz"):
                 shell("gzip " + read_file)
-                read_file = read_file + ".gz"
-            else:
-                read_file = read_file
+            read_file = read_file + ".gz"
             shell_command = "venv/bin/python scripts/run_connor_pipeline.py --sif " + sif_file + " "
             shell_command += "--main_nf " + main_nf + " --outdir " + output_dir + " "
             shell_command += "--ont " + read_file + " "
@@ -630,29 +624,35 @@ rule artic_badread_assemble:
                                 params.primer_scheme,
                                 regions_covered)
 
-def get_va_files(wildcards):
-    return expand("viridian_ART_assemblies/{wildcards.sample}")
+def aggregated_va_assemblies(wildcards):
+    checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
+    return expand("viridian_ART_assemblies/{sample}", sample=glob_wildcards(os.path.join("viridian_ART_assemblies", "{sample}")).sample)
 
-def get_vb_files(wildcards):
-    return expand("viridian_Badread_assemblies/{wildcards.sample}")
+def aggregated_vb_assemblies(wildcards):
+    checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
+    return expand("viridian_Badread_assemblies/{sample}", sample=glob_wildcards(os.path.join("viridian_Badread_assemblies", "{sample}")).sample)
 
-def get_aa_files(wildcards):
-    return expand("artic_ART_assemblies/{wildcards.sample}")
+def aggregated_aa_assemblies(wildcards):
+    checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
+    return expand("artic_ART_assemblies/{sample}", sample=glob_wildcards(os.path.join("artic_ART_assemblies", "{sample}")).sample)
 
-def get_ab_files(wildcards):
-    return expand("artic_Badread_assemblies/{wildcards.sample}")
+def aggregated_ab_assemblies(wildcards):
+    checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
+    return expand("artic_Badread_assemblies/{sample}", sample=glob_wildcards(os.path.join("artic_Badread_assemblies", "{sample}")).sample)
 
-def get_truth_vcfs(wildcards):
-    return expand("truth_vcfs/{wildcards.sample}")
+def aggregated_tvs(wildcards):
+    checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
+    return expand("truth_vcfs/{sample}", sample=glob_wildcards(os.path.join("truth_vcfs", "{sample}")).sample)
 
-def get_truth_assemblies(wildcards):
-    return expand("masked_truth_assemblies/{wildcards.sample}")
+def aggregated_tas(wildcards):
+    checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
+    return expand("masked_truth_assemblies/{sample}", sample=glob_wildcards(os.path.join("masked_truth_assemblies", "{sample}")).sample)
 
 rule viridian_covid_truth_eval:
     input:
-        get_va_files,
-        get_vb_files,
-        get_truth_vcfs
+        aggregated_va_assemblies,
+        aggregated_vb_assemblies,
+        aggregated_tvs
     output:
         directory("cte_viridian_output")
     threads: 1
@@ -667,27 +667,28 @@ rule viridian_covid_truth_eval:
             if not os.path.exists(sub_dir):
                 os.mkdir(sub_dir)
         # list viridian assemblies
-        art_assemblies = sorted(glob.glob(os.path.join(input[0], "*")))
-        badread_assemblies = sorted(glob.glob(os.path.join(input[1], "*")))
+        art_assemblies = sorted([f for f in input if "viridian_ART" in f and len(f.split("/")) == 2])
+        badread_assemblies = sorted([f for f in input if "viridian_Badread" in f and len(f.split("/")) == 2])
+        truth_vcfs = sorted([f for f in input if "truth_vcfs" in f])
         # run covid truth eval
         run_cte(params.primer_scheme,
                 art_assemblies,
                 os.path.join(output[0], "ART_assemblies"),
-                input[2],
+                os.path.dirname(truth_vcfs[0]),
                 params.container_dir,
                 "viridian")
         run_cte(params.primer_scheme,
                 badread_assemblies,
                 os.path.join(output[0], "Badread_assemblies"),
-                input[2],
+                os.path.dirname(truth_vcfs[0]),
                 params.container_dir,
                 "viridian")
 
 rule artic_covid_truth_eval:
     input:
-        get_aa_files,
-        get_ab_files,
-        get_truth_vcfs
+        aggregated_aa_assemblies,
+        aggregated_ab_assemblies,
+        aggregated_tvs
     output:
         directory("cte_artic_output")
     threads:
@@ -700,30 +701,31 @@ rule artic_covid_truth_eval:
         for sub_dir in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
             if not os.path.exists(sub_dir):
                 os.mkdir(sub_dir)
-        # list viridian assemblies
-        art_assemblies = sorted(glob.glob(os.path.join(input[0], "*")))
-        badread_assemblies = sorted(glob.glob(os.path.join(input[1], "*")))
+        # list artic assemblies
+        art_assemblies = sorted([f for f in input if "artic_ART" in f and len(f.split("/")) == 2])
+        badread_assemblies = sorted([f for f in input if "artic_Badread" in f and len(f.split("/")) == 2])
+        truth_vcfs = sorted([f for f in input if "truth_vcfs" in f])
         # run covid truth eval
         run_cte(params.primer_scheme,
                 art_assemblies,
                 os.path.join(output[0], "ART_assemblies"),
-                input[2],
+                os.path.dirname(truth_vcfs[0]),
                 params.container_dir,
                 "artic")
         run_cte(params.primer_scheme,
                 badread_assemblies,
                 os.path.join(output[0], "Badread_assemblies"),
-                input[2],
+                os.path.dirname(truth_vcfs[0]),
                 params.container_dir,
                 "artic")
 
 rule build_usher_phylogenies:
     input:
-        get_truth_assemblies,
-        get_va_files,
-        get_vb_files,
-        get_aa_files,
-        get_ab_files,
+        aggregated_tas,
+        aggregated_aa_assemblies,
+        aggregated_ab_assemblies,
+        aggregated_va_assemblies,
+        aggregated_vb_assemblies
     output:
         directory("usher_phylogenies")
     threads:
