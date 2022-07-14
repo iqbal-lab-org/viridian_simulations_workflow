@@ -54,13 +54,13 @@ def combine_vcfs(file_paths,
         sample = os.path.basename(f)
         if method == "viridian":
             old_vcf_file = os.path.join(f, "variants.vcf")
-            old_assembly = os.path.join(f, "masked.fasta")
+            old_assembly = os.path.join(f, "consensus.fa")
         if method == "simulated":
             old_vcf_file = os.path.join(vcf_dir, os.path.basename(f), "04.truth.vcf")
             old_assembly = os.path.join(assembly_dir, os.path.basename(f) + ".fasta")
         if method == "artic":
             old_vcf_file = os.path.join(vcf_dir, os.path.basename(output_dir), os.path.basename(f), "04.truth.vcf")
-            old_assembly = os.path.join(assembly_dir, os.path.basename(output_dir), os.path.basename(f), "masked.fasta")
+            old_assembly = os.path.join(assembly_dir, os.path.basename(output_dir), os.path.basename(f), "consensus.fa")
         new_vcf_file = os.path.join(temp_dir, sample + ".vcf")
         new_assembly = os.path.join(temp_dir, sample + ".fa")
         # copy vcf file into temp dir

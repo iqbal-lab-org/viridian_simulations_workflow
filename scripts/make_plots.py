@@ -35,7 +35,8 @@ def run_cte(primer_scheme,
         if method == "artic":
             assembly_file = os.path.join(assem, "consensus_trimmed.fa")
         else:
-            assembly_file = os.path.join(assem, "masked.fasta")
+            assembly_file = os.path.join(assem, "consensus.fa")
+            #assembly_file = os.path.join(assem, "masked.fasta")
         manifest.append(os.path.basename(assem) + "\t" + vcf_file + "\t" + assembly_file + "\t" + scheme)
     # save metadata as tsv file
     with open(os.path.join(outdir, "manifest.tsv"), "w") as manifestOut:
@@ -341,10 +342,10 @@ def pairwise_compare(first_assemblies,
     alignment_files = []
     for assembly in first_assemblies:
         if comparison == "viridian_artic":
-            first_assembly = os.path.join(assembly, "masked.fasta")
+            first_assembly = os.path.join(assembly, "consensus.fa")
             second_assembly = os.path.join(second_assemblies_dir, os.path.basename(assembly), "consensus_trimmed.fa")
         if comparison == "viridian_simulated":
-            first_assembly = os.path.join(assembly, "masked.fasta")
+            first_assembly = os.path.join(assembly, "consensus.fa")
             second_assembly = os.path.join(second_assemblies_dir, os.path.basename(assembly) + ".fasta")
         if comparison == "artic_simulated":
             first_assembly = os.path.join(assembly, "consensus_trimmed.fa")
