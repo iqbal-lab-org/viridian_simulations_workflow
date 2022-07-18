@@ -26,8 +26,6 @@ snakemake --cores 1
 ### General
 * ```threads```: Number of threads to extract amplicon sequences and run ART_illumina.
 * ```reference_genome```: A SARS-CoV-2 reference genome for simulations and read mapping.
-* ```divide_genomes```: Randomly assign genomes to simulate illumina or nanopore reads by proportion.
-* ```proportion_illumina```: Proportion of total number of simulated genomes that will become simulated illumina reads. The remaining fraction become Nanopore simulated reads. Required for divide_genomes=True.
 * ```primer_scheme```: The artic nCoV-2019 primer scheme (V3, V4 or V4.1).
 * ```primer_scheme_dir```: GitHub repository of primer schemes for the artic assembly pipeline (usually https://github.com/artic-network/primer-schemes).
 * ```seed```: Start seed.
@@ -65,4 +63,4 @@ snakemake --cores 1
 * ```batch_size```: Number of samples to add to the phylogeny with UshER before running matOptimize.
 
 ## Testing
-To test the s```cripts/error_modes.py```, run ```python tests/run_tests.py```
+To test the functions in ```scripts/error_modes.py```, run ```python tests/run_tests.py```
