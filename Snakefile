@@ -28,7 +28,7 @@ def artic_art_input(wildcards):
 
 def artic_badread_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("artic_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
+    return expand("epi2me_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
 
 def truth_vcf_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
@@ -72,11 +72,11 @@ rule phastSim_evolution:
     params:
         seed=config['seed'],
         container_dir=config["container_directory"],
-        substitution_rate=config['phastSim']["substitution_rate"]
+        rate_parameter=config['phastSim']["rate_parameter"]
     shell:
         'mkdir {output} && singularity run {params.container_dir}/images/phastSim.img --outpath {output}/ --seed {params.seed} --createFasta \
-            --createInfo --createNewick --createPhylip --treeFile {input.tree_file} \
-            --invariable 0.1 --alpha {params.substitution_rate} --omegaAlpha {params.substitution_rate} --codon \
+            --createInfo --createNewick --createPhylip --treeFile {input.tree_file} --hyperMutProbs 0.001 0.001 --hyperMutRates 20.0 200.0 \
+            --invariable 0.1 --alpha {params.rate_parameter} --omegaAlpha {params.rate_parameter} --codon \
             --reference {input.reference_genome} --createMAT'
 
 rule split_sequences:
@@ -114,7 +114,7 @@ checkpoint split_amplicons:
     resources:
 	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=config["threads"]
     shell:
-        "python scripts/error_modes.py --scheme {params.primer_scheme} --scheme-dir {params.scheme_dir} --input-dir {input.split_sequences} \
+        "venv/bin/python scripts/error_modes.py --scheme {params.primer_scheme} --scheme-dir {params.scheme_dir} --input-dir {input.split_sequences} \
             --output-dir {output} --container-dir {params.container_dir} --seed {params.seed} --dropout-prob {params.random_dropout_probability} \
             --dimer-prob {params.primer_dimer_probability} --match-mean {params.match_coverage_mean} --match-sd {params.match_coverage_sd} \
             --mismatch-mean {params.mismatch_coverage_mean} --mismatch-sd {params.mismatch_coverage_sd} --threads {threads}"
@@ -551,41 +551,36 @@ rule artic_art_assemble:
                                 params.primer_scheme,
                                 regions_covered)
 
-rule artic_badread_assemble:
+rule epi2me_badread_assemble:
     input:
         rules.cat_badread_reads.output,
         "amplicon_sequences"
     output:
-        directory("artic_Badread_assemblies/{SAMPLE}")
+        directory("epi2me_Badread_assemblies/{SAMPLE}")
     resources:
 	    mem_mb=lambda wildcards, attempt: 1000 * attempt
     threads: 1
     log:
-        "logs/artic/{SAMPLE}.log"
+        "logs/epi2me/{SAMPLE}.log"
     params:
-        artic_nanopore_container=config["artic_assemble"]["nanopore_workflow_container"],
-        primer_scheme=config["primer_scheme"],
-        main_nf=config["artic_assemble"]["main_nf"],
-        scheme_dir=config["artic_assemble"]["scheme_url"],
-        nextflow_path=config["artic_assemble"]["nextflow_path"]
+        main_nf=config["epi2me_badread_assemble"]["main_nf"],
+        cache_dir=config["epi2me_badread_assemble"]["nxf_sing_cache"],
+        primer_scheme=config["primer_scheme"]
     run:
-        def nanopore_artic_assemble(read_file,
-                                    sif_file,
-                                    main_nf,
-                                    scheme_url,
-                                    output_dir,
-                                    nextflow_path,
-                                    primer_scheme,
-                                    regions_covered):
+        def epi2me_artic_assemble(main_nf,
+                                output_dir,
+                                scheme,
+                                read_file,
+                                regions_covered):
             """run nanopore artic nextflow pipeline"""
             if not os.path.exists(read_file + ".gz"):
                 shell("gzip " + read_file)
             read_file = read_file + ".gz"
-            shell_command = "venv/bin/python scripts/run_connor_pipeline.py --sif " + sif_file + " "
-            shell_command += "--main_nf " + main_nf + " --outdir " + output_dir + " "
-            shell_command += "--ont " + read_file + " "
-            shell_command += "--scheme_url " + scheme_url + " --scheme_version " + primer_scheme + " --nextflow_path " + nextflow_path + " "
-            shell_command += "--sample_name " + os.path.basename(output_dir)
+            shell_command = "venv/bin/python scripts/run_epi2me.py --main_nf " + main_nf + " "
+            shell_command += "--force --sample_name " + os.path.basename(output_dir) + " "
+            shell_command += "--work_root_dir " + output_dir + " --outdir " + output_dir + " "
+            shell_command += "--scheme_version ARTIC/" + scheme + " "
+            shell_command += "--reads " + read_file
             if not os.path.exists(read_file.replace(".gz", "")):
                 shell_command += " && gunzip " + read_file
             shell(shell_command)
@@ -615,14 +610,12 @@ rule artic_badread_assemble:
                             "scheme_end": scheme_end}
         del amplicon_stats
         # run artic assembly pipeline
-        nanopore_artic_assemble(input[0],
-                                params.artic_nanopore_container,
-                                params.main_nf,
-                                params.scheme_dir,
-                                output[0],
-                                params.nextflow_path,
-                                params.primer_scheme,
-                                regions_covered)
+        epi2me_artic_assemble(params.main_nf,
+                            output[0],
+                            params.primer_scheme,
+                            input[0],
+                            regions_covered)
+
 
 def aggregated_va_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
@@ -636,9 +629,9 @@ def aggregated_aa_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
     return expand("artic_ART_assemblies/{sample}", sample=glob_wildcards(os.path.join("artic_ART_assemblies", "{sample}")).sample)
 
-def aggregated_ab_assemblies(wildcards):
+def aggregated_eb_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("artic_Badread_assemblies/{sample}", sample=glob_wildcards(os.path.join("artic_Badread_assemblies", "{sample}")).sample)
+    return expand("epi2me_Badread_assemblies/{sample}", sample=glob_wildcards(os.path.join("epi2me_Badread_assemblies", "{sample}")).sample)
 
 def aggregated_tvs(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
@@ -687,7 +680,7 @@ rule viridian_covid_truth_eval:
 rule artic_covid_truth_eval:
     input:
         aggregated_aa_assemblies,
-        aggregated_ab_assemblies,
+        aggregated_eb_assemblies,
         aggregated_tvs
     output:
         directory("cte_artic_output")
@@ -725,7 +718,7 @@ rule build_usher_phylogenies:
     input:
         aggregated_tas,
         aggregated_aa_assemblies,
-        aggregated_ab_assemblies,
+        aggregated_eb_assemblies,
         aggregated_va_assemblies,
         aggregated_vb_assemblies
     output:

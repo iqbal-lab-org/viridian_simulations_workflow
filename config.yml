@@ -15,7 +15,7 @@ VGsim:
 phastSim:
   tree_file: newick_output.nwk
   output_dir: phastSim_output
-  substitution_rate: 0.0002
+  rate_parameter: 0.0002
 
 split_amplicons:
   random_dropout_probability: 0.001
@@ -33,7 +33,10 @@ artic_assemble:
   scheme_url: https://github.com/artic-network/primer-schemes
   main_nf: singularity/ncov2019-artic-nf/main.nf
   illumina_workflow_container: singularity/ncov2019-artic-nf/artic-ncov2019-illumina.sif
-  nanopore_workflow_container: singularity/ncov2019-artic-nf/artic-ncov2019-nanopore.sif
+
+epi2me_badread_assemble:
+  main_nf: /hps/nobackup/iqbal/dander/viridian_simulations_workflow/singularity/epi2me/main.nf
+  nxf_sing_cache: /hps/nobackup/iqbal/dander/viridian_simulations_workflow/singularity/epi2me/nf_cache
 
 mask_assemblies:
   apply_mask: False

@@ -174,17 +174,22 @@ concatenated_ART_reads
 concatenated_Badread_reads
 viridian_ART_assemblies
 viridian_Badread_assemblies
+epi2me_Badread_assemblies
 masked_truth_assemblies
 truth_vcfs
 varifier_statistics
 phylogeny_comparisons
 cte_output
 artic_ART_assemblies
-artic_Badread_assemblies
 usher_phylogenies
+changed_nodes
+final-tree.nh
+mutation-paths.txt
+placement_stats.tsv
 artic_vcfs
 cte_artic_output
 cte_viridian_output
+logs
 
 # singularity containers
 singularity/images/*
