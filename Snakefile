@@ -16,23 +16,23 @@ configfile: 'config.yml'
 
 def viridian_art_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("viridian_ART_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
+    return expand("viridian_ART_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
 
 def viridian_badread_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("viridian_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
+    return expand("viridian_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
 
 def artic_art_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("artic_ART_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
+    return expand("artic_ART_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
 
 def artic_badread_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("artic_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
+    return expand("artic_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
 
 def truth_vcf_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("truth_vcfs/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
+    return expand("truth_vcfs/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
 
 rule all:
     input:
