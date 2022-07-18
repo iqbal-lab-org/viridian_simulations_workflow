@@ -449,7 +449,7 @@ rule viridian_badread_assemble:
 	    mem_mb=lambda wildcards, attempt: 1000 * attempt
     threads: 1
     log:
-        "logs/viridian/{SAMPLE}.log"
+        "logs/viridian_assemble/{SAMPLE}.log"
     params:
         viridian_container=config["viridian_assemble"]["viridian_container"]
     run:
@@ -696,6 +696,8 @@ rule artic_covid_truth_eval:
     params:
         container_dir=config["container_directory"],
         primer_scheme=config["primer_scheme"]
+    resources:
+	    mem_mb=lambda wildcards, attempt: 1000 * attempt
     run:
         # make output dirs
         for sub_dir in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
@@ -730,5 +732,7 @@ rule build_usher_phylogenies:
         directory("usher_phylogenies")
     threads:
         config["threads"]
+    resources:
+	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=config["threads"]
     shell:
         "bash scripts/ucscVcfUsher.sh"
