@@ -35,7 +35,7 @@ artic_assemble:
   illumina_workflow_container: singularity/ncov2019-artic-nf/artic-ncov2019-illumina.sif
 
 epi2me_badread_assemble:
-  main_nf: /hps/nobackup/iqbal/dander/viridian_simulations_workflow/singularity/epi2me/main.nf
+  main_nf: /nfs/research/zi/mhunt/Covid/Epi2me/wf-artic/main.nf
   nxf_sing_cache: /hps/nobackup/iqbal/dander/viridian_simulations_workflow/singularity/epi2me/nf_cache
 
 mask_assemblies:
