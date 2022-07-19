@@ -170,7 +170,7 @@ rule mask_assemblies:
 
 rule truth_vcfs:
     input:
-        rules.mask_assemblies.output,
+        "masked_truth_assemblies/{SAMPLE}.fasta",
         config["reference_genome"],
         "amplicon_sequences"
     output:
@@ -350,7 +350,7 @@ rule simulate_badread_reads:
 
 rule cat_art_reads:
     input:
-        rules.simulate_art_reads.output
+        "ART_read_output/{SAMPLE}"
     output:
         fw_read="concatenated_ART_reads/{SAMPLE}_1.fastq",
         rv_read="concatenated_ART_reads/{SAMPLE}_2.fastq"
@@ -376,7 +376,7 @@ rule cat_art_reads:
 
 rule cat_badread_reads:
     input:
-        rules.simulate_badread_reads.output
+        "Badread_read_output/{SAMPLE}"
     output:
         "concatenated_Badread_reads/{SAMPLE}.fastq"
     resources:
@@ -403,8 +403,8 @@ rule cat_badread_reads:
 
 rule viridian_art_assemble:
     input:
-        fw_read=rules.cat_art_reads.output.fw_read,
-        rv_read=rules.cat_art_reads.output.rv_read
+        fw_read="concatenated_ART_reads/{SAMPLE}_1.fastq",
+        rv_read="concatenated_ART_reads/{SAMPLE}_2.fastq"
     output:
         directory("viridian_ART_assemblies/{SAMPLE}")
     resources:
@@ -442,7 +442,7 @@ rule viridian_art_assemble:
 
 rule viridian_badread_assemble:
     input:
-        rules.cat_badread_reads.output
+        "concatenated_Badread_reads/{SAMPLE}.fastq"
     output:
         directory("viridian_Badread_assemblies/{SAMPLE}")
     resources:
@@ -476,8 +476,8 @@ rule viridian_badread_assemble:
 
 rule artic_art_assemble:
     input:
-        fw_read=rules.cat_art_reads.output.fw_read,
-        rv_read=rules.cat_art_reads.output.rv_read,
+        fw_read="concatenated_ART_reads/{SAMPLE}_1.fastq",
+        rv_read="concatenated_ART_reads/{SAMPLE}_2.fastq",
         amplicon_sequences="amplicon_sequences"
     output:
         directory("artic_ART_assemblies/{SAMPLE}")
@@ -553,7 +553,7 @@ rule artic_art_assemble:
 
 rule epi2me_badread_assemble:
     input:
-        rules.cat_badread_reads.output,
+        "concatenated_Badread_reads/{SAMPLE}.fastq",
         "amplicon_sequences"
     output:
         directory("epi2me_Badread_assemblies/{SAMPLE}")
