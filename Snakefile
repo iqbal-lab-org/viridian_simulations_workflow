@@ -211,8 +211,8 @@ rule truth_vcfs:
             truth_vcf_variants = truth_vcf[1].splitlines()[1:]
             first_line = [truth_vcf[1].splitlines()[1]]
             truth_vcf_variants.sort(key=lambda x: int(x.split("\t")[1]))
-            truth_vcf[1] = "\n".join(first_line + truth_vcf_variants)
-            truth_vcf = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample".join(truth_vcf)
+            truth_vcf[1] = "\n".join(truth_vcf_variants)
+            truth_vcf = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample".join(truth_vcf) + "\n"
             with open(os.path.join(output_dir, "04.truth_dropped.vcf"), "w") as truth_vcf_out:
                 truth_vcf_out.write("\n".join(truth_vcf.splitlines()[1:]))
 
