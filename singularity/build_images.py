@@ -5,6 +5,11 @@ import subprocess
 # make images directory
 if not os.path.exists("singularity/images"):
     os.mkdir("singularity/images")
+#download nextflow binary
+download_command = "wget https://github.com/nextflow-io/nextflow/releases/download/v21.04.3/nextflow-21.04.3-all"
+download_command += " && mv nextflow-21.04.3-all nextflow && chmod 777 nextflow"
+subprocess.run(download_command, shell=True, check=True)
+end
 # iterate through list of recipes to build the image
 recipes = ["VGsim",
            "phastSim",
