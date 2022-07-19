@@ -590,7 +590,7 @@ rule epi2me_badread_assemble:
             shell_command += "--force --sample_name " + os.path.basename(output_dir) + " "
             shell_command += "--work_root_dir " + output_dir + " --outdir " + output_dir + " "
             shell_command += "--scheme_version ARTIC/" + scheme + " "
-            shell_command += "--reads " + read_file + " --nextflow-path " + nextflow_path
+            shell_command += "--reads " + read_file + " --nextflow_path " + nextflow_path
             if not os.path.exists(read_file.replace(".gz", "")):
                 shell_command += " && gunzip " + read_file
             shell(shell_command)
