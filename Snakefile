@@ -706,7 +706,7 @@ rule artic_covid_truth_eval:
                 os.mkdir(sub_dir)
         # list artic assemblies
         art_assemblies = sorted([f for f in input if "artic_ART" in f and len(f.split("/")) == 2])
-        badread_assemblies = sorted([f for f in input if "artic_Badread" in f and len(f.split("/")) == 2])
+        badread_assemblies = sorted([f for f in input if "epi2me_Badread" in f and len(f.split("/")) == 2])
         truth_vcfs = sorted([f for f in input if "truth_vcfs" in f])
         # run covid truth eval
         run_cte(params.primer_scheme,
