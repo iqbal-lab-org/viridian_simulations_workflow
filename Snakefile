@@ -639,7 +639,7 @@ def aggregated_aa_assemblies(wildcards):
 
 def aggregated_eb_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("artic_Badread_assemblies/{sample}", sample=glob_wildcards(os.path.join("epi2me_Badread_assemblies", "{sample}")).sample)
+    return expand("artic_Badread_assemblies/{sample}", sample=glob_wildcards(os.path.join("artic_Badread_assemblies", "{sample}")).sample)
 
 def aggregated_tvs(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
