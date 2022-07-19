@@ -28,7 +28,7 @@ def artic_art_input(wildcards):
 
 def artic_badread_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("epi2me_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
+    return expand("artic_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
 
 def truth_vcf_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
@@ -564,7 +564,7 @@ rule epi2me_badread_assemble:
         "concatenated_Badread_reads/{SAMPLE}.fastq",
         "amplicon_sequences"
     output:
-        directory("epi2me_Badread_assemblies/{SAMPLE}")
+        directory("artic_Badread_assemblies/{SAMPLE}")
     resources:
 	    mem_mb=lambda wildcards, attempt: 1000 * attempt
     threads: 1
@@ -639,7 +639,7 @@ def aggregated_aa_assemblies(wildcards):
 
 def aggregated_eb_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("epi2me_Badread_assemblies/{sample}", sample=glob_wildcards(os.path.join("epi2me_Badread_assemblies", "{sample}")).sample)
+    return expand("artic_Badread_assemblies/{sample}", sample=glob_wildcards(os.path.join("epi2me_Badread_assemblies", "{sample}")).sample)
 
 def aggregated_tvs(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
@@ -706,7 +706,7 @@ rule artic_covid_truth_eval:
                 os.mkdir(sub_dir)
         # list artic assemblies
         art_assemblies = sorted([f for f in input if "artic_ART" in f and len(f.split("/")) == 2])
-        badread_assemblies = sorted([f for f in input if "epi2me_Badread" in f and len(f.split("/")) == 2])
+        badread_assemblies = sorted([f for f in input if "artic_Badread" in f and len(f.split("/")) == 2])
         truth_vcfs = sorted([f for f in input if "truth_vcfs" in f])
         # run covid truth eval
         run_cte(params.primer_scheme,
