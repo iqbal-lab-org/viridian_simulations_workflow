@@ -4,6 +4,7 @@ primer_scheme: V4
 scheme_dir: primer_schemes
 seed: 2022
 container_directory: singularity
+nextflow_path: /hps/nobackup/iqbal/dander/viridian_simulations_workflow/nextflow
 
 VGsim:
   rate_file: VGsim_params/rate_file.rt
@@ -29,7 +30,6 @@ simulate_reads:
   illumina_read_length: 250
 
 artic_assemble:
-  nextflow_path: /home/daniel/Documents/GitHub/viridian_simulations_workflow/nextflow
   scheme_url: https://github.com/artic-network/primer-schemes
   main_nf: singularity/ncov2019-artic-nf/main.nf
   illumina_workflow_container: singularity/ncov2019-artic-nf/artic-ncov2019-illumina.sif

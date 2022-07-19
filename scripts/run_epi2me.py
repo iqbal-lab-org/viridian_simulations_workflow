@@ -67,6 +67,7 @@ def run_epi2me(
   outdir,
   nf_script,
   scheme_version,
+  nextflow_path,
   reads,
   nxf_sing_cache,
   sample_name="sample",
@@ -103,7 +104,7 @@ def run_epi2me(
     with open(run_script, "w") as f:
         print(f"export NXF_SINGULARITY_CACHEDIR={nxf_sing_cache}", file=f)
         print(
-            "nextflow run", os.path.abspath(nf_script),
+            nextflow_path + " run", os.path.abspath(nf_script),
             "-ansi-log false",
             "-work-dir", work_dir,
             "-profile singularity",
@@ -149,6 +150,7 @@ required_ops_group = parser.add_argument_group("Required options")
 required_ops_group.add_argument("--outdir", required=True, help="Output directory")
 required_ops_group.add_argument("--scheme_version", required=True, help="Primer scheme version. See --help from main nextflow script to get a list of possible values. Probably want one of: Midnight-ONT/V{1,2,3} ARTIC/V{1,2,3,4,4.1}", metavar="STR")
 required_ops_group.add_argument("--reads", required=True, help="FASTQ file of ONT reads", metavar="FILENAME")
+required_ops_group.add_argument("--nextflow-path", required=True, help="abs path for nextflow binary")
 
 parser.add_argument("--main_nf", help="Path of main.nf file in the epi2me-labs/wf-artic repository [%(default)s]", metavar="FILENAME", default="/nfs/research/zi/mhunt/Covid/Epi2me/wf-artic/main.nf")
 parser.add_argument("--nxf_sing_cache", help="Value of NXF_SINGULARITY_CACHEDIR [%(default)s]", metavar="DIRNAME", default="/nfs/research/zi/mhunt/Containers/nf_cache")
@@ -168,6 +170,7 @@ run_epi2me(
         options.outdir,
         options.main_nf,
         options.scheme_version,
+        options.nextflow_path,
         options.reads,
         options.nxf_sing_cache,
         sample_name=options.sample_name,

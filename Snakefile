@@ -499,7 +499,7 @@ rule artic_art_assemble:
         primer_scheme=config["primer_scheme"],
         main_nf=config["artic_assemble"]["main_nf"],
         scheme_dir=config["artic_assemble"]["scheme_url"],
-        nextflow_path=config["artic_assemble"]["nextflow_path"]
+        nextflow_path=config["nextflow_path"]
     run:
         def illumina_artic_assemble(forward_rd,
                                     reverse_rd,
@@ -573,13 +573,15 @@ rule epi2me_badread_assemble:
     params:
         main_nf=config["epi2me_badread_assemble"]["main_nf"],
         cache_dir=config["epi2me_badread_assemble"]["nxf_sing_cache"],
-        primer_scheme=config["primer_scheme"]
+        primer_scheme=config["primer_scheme"],
+        nextflow_path=config["nextflow_path"]
     run:
         def epi2me_artic_assemble(main_nf,
                                 output_dir,
                                 scheme,
                                 read_file,
-                                regions_covered):
+                                regions_covered,
+                                nextflow_path):
             """run nanopore artic nextflow pipeline"""
             if not os.path.exists(read_file + ".gz"):
                 shell("gzip " + read_file)
@@ -588,7 +590,7 @@ rule epi2me_badread_assemble:
             shell_command += "--force --sample_name " + os.path.basename(output_dir) + " "
             shell_command += "--work_root_dir " + output_dir + " --outdir " + output_dir + " "
             shell_command += "--scheme_version ARTIC/" + scheme + " "
-            shell_command += "--reads " + read_file
+            shell_command += "--reads " + read_file + " --nextflow-path " + nextflow_path
             if not os.path.exists(read_file.replace(".gz", "")):
                 shell_command += " && gunzip " + read_file
             shell(shell_command)
@@ -622,7 +624,8 @@ rule epi2me_badread_assemble:
                             output[0],
                             params.primer_scheme,
                             input[0],
-                            regions_covered)
+                            regions_covered,
+                            params.nextflow_path)
 
 
 def aggregated_va_assemblies(wildcards):
