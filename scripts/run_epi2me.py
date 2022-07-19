@@ -103,7 +103,7 @@ def run_epi2me(
     with open(run_script, "w") as f:
         print(f"export NXF_SINGULARITY_CACHEDIR={nxf_sing_cache}", file=f)
         print(
-            "nextflow run", os.path.abspath(nf_script),
+            "/hps/nobackup/iqbal/dander/viridian_simulations_workflow/nextflow run", os.path.abspath(nf_script),
             "-ansi-log false",
             "-work-dir", work_dir,
             "-profile singularity",
