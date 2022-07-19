@@ -129,6 +129,8 @@ rule mask_assemblies:
         mask_assemblies=config['mask_assemblies']["apply_mask"]
     threads: 1
     run:
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]) == os.path.basename(output[0].replace(".fasta", ""))
         # make directory
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -214,6 +216,8 @@ rule truth_vcfs:
             with open(os.path.join(output_dir, "04.truth_dropped.vcf"), "w") as truth_vcf_out:
                 truth_vcf_out.write("\n".join(truth_vcf.splitlines()[1:]))
 
+        # check the truth vcf input sample matches the output
+        assert os.path.basename(input[0].replace(".fasta", "")) == os.path.basename(output[0])
         # make directory
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -278,6 +282,8 @@ rule simulate_art_reads:
                         ' -l ' + read_length + ' -f ' + str(coverage) + ' -o ' + read_file
                 shell(shell_command)
 
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]) == os.path.basename(output[0])
         # make output dirs
         output_dirs = [os.path.dirname(output[0]), output[0]]
         for o in output_dirs:
@@ -332,6 +338,8 @@ rule simulate_badread_reads:
                 shell(shell_command)
             return
 
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]) == os.path.basename(output[0])
         # make output dirs
         output_dirs = [os.path.dirname(output[0]), output[0]]
         for o in output_dirs:
