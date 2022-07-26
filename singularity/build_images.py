@@ -12,12 +12,12 @@ subprocess.run(download_command, shell=True, check=True)
 end
 # iterate through list of recipes to build the image
 recipes = ["VGsim",
-           "phastSim",
-           "ART",
-           "Badread",
-           "Map",
-           "Mafft",
-           "bcftools"]
+        "phastSim",
+        "ART",
+        "Badread",
+        "Map",
+        "Mafft",
+        "bcftools"]
 # build image
 for recipe in recipes:
     build_command = "singularity build --force --fakeroot singularity/images/"

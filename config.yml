@@ -11,7 +11,7 @@ VGsim:
   iterations: 10000000
   pp_population_model_file: VGsim_params/pp_population.pp
   mg_population_model_file: VGsim_params/mg_population.mg
-  sample_size: 100
+  sample_size: 10000
 
 phastSim:
   tree_file: newick_output.nwk

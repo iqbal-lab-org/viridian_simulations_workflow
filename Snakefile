@@ -74,48 +74,13 @@ rule phastSim_evolution:
         rate_parameter=config['phastSim']["rate_parameter"]
     shell:
         'mkdir {output} && singularity run {params.container_dir}/images/phastSim.img --outpath {output}/ --seed {params.seed} --createFasta \
-            --createInfo --createNewick --createPhylip --treeFile {input.tree_file} --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 \
+            --createInfo --createNewick --createPhylip --scale 0.01 --treeFile {input.tree_file} --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 \
             --invariable 0.1 --alpha {params.rate_parameter} --omegaAlpha {params.rate_parameter} --codon \
             --reference {input.reference_genome} --createMAT'
 
-rule scale_phastSim_tree:
-    input:
-        tree_file=rules.VGsim_tree.output,
-        reference_genome="omicron.fasta",#config["reference_genome"],
-        unscaled_tree=rules.phastSim_evolution.output
-    output:
-        directory("scaled_phastSim_output")
-    params:
-        seed=config['seed'],
-        container_dir=config["container_directory"],
-        rate_parameter=config['phastSim']["rate_parameter"],
-        sample_size=config['VGsim']['sample_size']
-    run:
-        # count the number of mutations in the first phastSim run
-        with open(os.path.join(input[2], "sars-cov-2_simulation_output.txt"), "r") as inSNPs:
-            samples = inSNPs.read().split(">")
-        mutations = {}
-        for samp in samples:
-            snps = samp.splitlines()[1:]
-            for s in snps:
-                sep = s.split(" ")
-                if not sep[0] in mutations:
-                    mutations[sep[0]] = [sep[1]]
-                else:
-                    if not sep[1] in mutations[sep[0]]:
-                        mutations[sep[0]].append(sep[1])
-        count = 0
-        for k in mutations.keys():
-            count += len(mutations[k])
-        scale = (params.sample_size)/count
-        shell('mkdir {output} && singularity run {params.container_dir}/images/phastSim.img --outpath {output}/ --seed {params.seed} --createFasta \
-            --createInfo --createNewick --createPhylip --scale ' + str(scale) + ' --treeFile {input.tree_file} --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 \
-            --invariable 0.1 --alpha {params.rate_parameter} --omegaAlpha {params.rate_parameter} --codon \
-            --reference {input.reference_genome} --createMAT')
-
 rule split_sequences:
     input:
-        rules.scale_phastSim_tree.output
+        rules.phastSim_evolution.output
     output:
         directory('simulated_genomes')
     run:
