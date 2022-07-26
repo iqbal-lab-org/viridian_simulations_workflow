@@ -1,6 +1,5 @@
 import glob
 import gzip
-from joblib import Parallel, delayed
 import os
 import pickle
 import pysam
@@ -39,11 +38,11 @@ rule all:
         viridian_art_input,
         viridian_badread_input,
         artic_art_input,
-        artic_badread_input,
+        #artic_badread_input,
         truth_vcf_input,
         "cte_viridian_output",
-        "cte_artic_output",
-        "usher_phylogenies"
+        #"cte_artic_output",
+        #"usher_phylogenies"
 
 rule VGsim_tree:
     input:
@@ -79,9 +78,44 @@ rule phastSim_evolution:
             --invariable 0.1 --alpha {params.rate_parameter} --omegaAlpha {params.rate_parameter} --codon \
             --reference {input.reference_genome} --createMAT'
 
+rule scale_phastSim_tree:
+    input:
+        tree_file=rules.VGsim_tree.output,
+        reference_genome="omicron.fasta",#config["reference_genome"],
+        unscaled_tree=rules.phastSim_evolution.output
+    output:
+        directory("scaled_phastSim_output")
+    params:
+        seed=config['seed'],
+        container_dir=config["container_directory"],
+        rate_parameter=config['phastSim']["rate_parameter"],
+        sample_size=config['VGsim']['sample_size']
+    run:
+        # count the number of mutations in the first phastSim run
+        with open(os.path.join(input[2], "sars-cov-2_simulation_output.txt"), "r") as inSNPs:
+            samples = inSNPs.read().split(">")
+        mutations = {}
+        for samp in samples:
+            snps = samp.splitlines()[1:]
+            for s in snps:
+                sep = s.split(" ")
+                if not sep[0] in mutations:
+                    mutations[sep[0]] = [sep[1]]
+                else:
+                    if not sep[1] in mutations[sep[0]]:
+                        mutations[sep[0]].append(sep[1])
+        count = 0
+        for k in mutations.keys():
+            count += len(mutations[k])
+        scale = (params.sample_size)/count
+        shell('mkdir {output} && singularity run {params.container_dir}/images/phastSim.img --outpath {output}/ --seed {params.seed} --createFasta \
+            --createInfo --createNewick --createPhylip --scale ' + str(scale) + ' --treeFile {input.tree_file} --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 \
+            --invariable 0.1 --alpha {params.rate_parameter} --omegaAlpha {params.rate_parameter} --codon \
+            --reference {input.reference_genome} --createMAT')
+
 rule split_sequences:
     input:
-        rules.phastSim_evolution.output
+        rules.scale_phastSim_tree.output
     output:
         directory('simulated_genomes')
     run:
@@ -212,7 +246,7 @@ rule truth_vcfs:
             first_line = [truth_vcf[1].splitlines()[1]]
             truth_vcf_variants.sort(key=lambda x: int(x.split("\t")[1]))
             truth_vcf[1] = "\n".join(truth_vcf_variants)
-            truth_vcf = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample".join(truth_vcf) + "\n"
+            truth_vcf = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n".join(truth_vcf) + "\n"
             with open(os.path.join(output_dir, "04.truth_dropped.vcf"), "w") as truth_vcf_out:
                 truth_vcf_out.write("\n".join(truth_vcf.splitlines()[1:]))
 
@@ -367,6 +401,8 @@ rule cat_art_reads:
     log:
         "logs/concatenate_art/{SAMPLE}.log"
     run:
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]) == os.path.basename(output[0]).replace("_1.fastq", "") and os.path.basename(input[0]) == os.path.basename(output[1]).replace("_2.fastq", "")
         # make output dirs
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -392,6 +428,8 @@ rule cat_badread_reads:
     log:
         "logs/concatenate_badread/{SAMPLE}.log"
     run:
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]) == os.path.basename(output[0]).replace(".fastq", "")
         # make output dirs
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -437,6 +475,8 @@ rule viridian_art_assemble:
                     --outdir " + output + "/"
             shell(viridian_command)
 
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]).replace("_1.fastq", "") == os.path.basename(output[0]) and os.path.basename(input[1]).replace("_2.fastq", "") == os.path.basename(output[0])
         # make the output directory
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -472,7 +512,8 @@ rule viridian_badread_assemble:
                     --reads " + sample + " \
                     --outdir " + output + "/"
             shell(viridian_command)
-
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]).replace(".fastq", "") == os.path.basename(output[0])
         # make the output directory
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -531,7 +572,8 @@ rule artic_art_assemble:
             # write out the masked simulated sequence
             with open(filename.replace("consensus", "consensus_trimmed"), "w") as outGen:
                 outGen.write("\n".join([">" + sample_name, "".join(sample_sequence)]))
-
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]).replace("_1.fastq", "") == os.path.basename(output[0]) and os.path.basename(input[1]).replace("_2.fastq", "") == os.path.basename(output[0])
         # make output directory
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -602,7 +644,8 @@ rule epi2me_badread_assemble:
             # write out the masked simulated sequence
             with open(filename.replace("consensus", "consensus_trimmed"), "w") as outGen:
                 outGen.write("\n".join([">" + sample_name, "".join(sample_sequence)]))
-
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]).replace(".fastq", "") == os.path.basename(output[0])
         # make output directory
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))

@@ -30,13 +30,18 @@ def run_cte(primer_scheme,
         scheme = "COVID-MIDNIGHT-1200"
     # iterate through assemblies
     manifest = ["name\ttruth_vcf\teval_fasta\tprimers"]
+    count = 0
     for assem in assemblies:
-        vcf_file = os.path.join(truth_vcf_dir, os.path.basename(assem), "04.truth_dropped.vcf")
+        #vcf_file = os.path.join(truth_vcf_dir, os.path.basename(assem), "04.truth_dropped.vcf")
+        vcf_file = os.path.join(truth_vcf_dir, os.path.basename(assem), "04.truth.vcf")
         if method == "artic":
             assembly_file = os.path.join(assem, "consensus_trimmed.fa")
         else:
-            #assembly_file = os.path.join(assem, "consensus.fa")
-            assembly_file = os.path.join(assem, "masked.fasta")
+            assembly_file = os.path.join(assem, "consensus.fa")
+            #assembly_file = os.path.join(assem, "masked.fasta")
+        #for a in assemblies:
+        #   manifest.append(os.path.basename(a) + "_" + str(count) + "\t" + vcf_file + "\t" + os.path.join(a, "consensus.fa") + "\t" + scheme)
+        #  count += 1
         manifest.append(os.path.basename(assem) + "\t" + vcf_file + "\t" + assembly_file + "\t" + scheme)
     # save metadata as tsv file
     with open(os.path.join(outdir, "manifest.tsv"), "w") as manifestOut:

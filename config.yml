@@ -4,19 +4,19 @@ primer_scheme: V4
 scheme_dir: primer_schemes
 seed: 2022
 container_directory: singularity
-nextflow_path: /hps/nobackup/iqbal/dander/viridian_simulations_workflow/nextflow
+nextflow_path: /home/daniel/Documents/GitHub/viridian_simulations_workflow/nextflow
 
 VGsim:
   rate_file: VGsim_params/rate_file.rt
   iterations: 10000000
   pp_population_model_file: VGsim_params/pp_population.pp
   mg_population_model_file: VGsim_params/mg_population.mg
-  sample_size: 5
+  sample_size: 100
 
 phastSim:
   tree_file: newick_output.nwk
   output_dir: phastSim_output
-  rate_parameter: 0.0002
+  rate_parameter: 1
 
 split_amplicons:
   random_dropout_probability: 0.001
@@ -42,7 +42,7 @@ mask_assemblies:
   apply_mask: False
 
 viridian_assemble:
-  viridian_container: singularity/viridian_workflow/23.06.22.viridian_workflow.img
+  viridian_container: singularity/viridian_workflow/viridian_workflow.img
 
 phylogenies:
   batch_size: 10000
