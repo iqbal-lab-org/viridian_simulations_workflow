@@ -37,8 +37,8 @@ def run_cte(primer_scheme,
         if method == "artic":
             assembly_file = os.path.join(assem, "consensus_trimmed.fa")
         else:
-            assembly_file = os.path.join(assem, "consensus.fa")
-            #assembly_file = os.path.join(assem, "masked.fasta")
+            #assembly_file = os.path.join(assem, "consensus.fa")
+            assembly_file = os.path.join(assem, "masked.fasta")
         #for a in assemblies:
         #   manifest.append(os.path.basename(a) + "_" + str(count) + "\t" + vcf_file + "\t" + os.path.join(a, "consensus.fa") + "\t" + scheme)
         #  count += 1

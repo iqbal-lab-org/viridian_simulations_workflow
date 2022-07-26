@@ -146,7 +146,7 @@ checkpoint split_amplicons:
         container_dir=config["container_directory"]
     threads: config["threads"]
     resources:
-	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=config["threads"]
+	    mem_mb=lambda wildcards, attempt: 1000 * attempt, threads=config["threads"]
     shell:
         "venv/bin/python scripts/error_modes.py --scheme {params.primer_scheme} --scheme-dir {params.scheme_dir} --input-dir {input.split_sequences} \
             --output-dir {output} --container-dir {params.container_dir} --seed {params.seed} --dropout-prob {params.random_dropout_probability} \
@@ -531,7 +531,7 @@ rule artic_art_assemble:
     output:
         directory("artic_ART_assemblies/{SAMPLE}")
     resources:
-	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=2
+	    mem_mb=lambda wildcards, attempt: 1000 * attempt, threads=2
     threads: 2
     log:
         "logs/artic_assemble/{SAMPLE}.log"
