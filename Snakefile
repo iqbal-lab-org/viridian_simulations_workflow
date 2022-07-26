@@ -38,11 +38,11 @@ rule all:
         viridian_art_input,
         viridian_badread_input,
         artic_art_input,
-        #artic_badread_input,
+        artic_badread_input,
         truth_vcf_input,
         "cte_viridian_output",
-        #"cte_artic_output",
-        #"usher_phylogenies"
+        "cte_artic_output",
+        "usher_phylogenies"
 
 rule VGsim_tree:
     input:
