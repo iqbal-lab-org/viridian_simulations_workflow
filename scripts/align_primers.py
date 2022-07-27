@@ -34,7 +34,7 @@ def main():
         bam_file = path + ".bam"
         bed_file = path + ".bed"
         # align primers to simulated sequence and extract mapped information
-        map_command = args.bwa_path + ' index ' + args.genomic_sequence + ' && ' + args.bwa_path + ' aln -n 4 '
+        map_command = args.bwa_path + ' index ' + args.genomic_sequence + ' && ' + args.bwa_path + ' aln -n 5 '
         map_command += args.genomic_sequence + ' ' + primer_fasta + ' > ' + sai_file
         map_command += '; ' + args.bwa_path + ' samse ' + args.genomic_sequence
         map_command += ' ' + sai_file +  ' ' + primer_fasta
