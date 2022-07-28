@@ -1,6 +1,5 @@
 import glob
 import gzip
-from joblib import Parallel, delayed
 import os
 import pickle
 import pysam
@@ -16,23 +15,23 @@ configfile: 'config.yml'
 
 def viridian_art_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("viridian_ART_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
+    return expand("viridian_ART_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
 
 def viridian_badread_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("viridian_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
+    return expand("viridian_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
 
 def artic_art_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("artic_ART_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
+    return expand("artic_ART_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
 
 def artic_badread_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("artic_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
+    return expand("artic_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
 
 def truth_vcf_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("truth_vcfs/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s])
+    return expand("truth_vcfs/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
 
 rule all:
     input:
@@ -72,11 +71,11 @@ rule phastSim_evolution:
     params:
         seed=config['seed'],
         container_dir=config["container_directory"],
-        substitution_rate=config['phastSim']["substitution_rate"]
+        rate_parameter=config['phastSim']["rate_parameter"]
     shell:
         'mkdir {output} && singularity run {params.container_dir}/images/phastSim.img --outpath {output}/ --seed {params.seed} --createFasta \
-            --createInfo --createNewick --createPhylip --treeFile {input.tree_file} \
-            --invariable 0.1 --alpha {params.substitution_rate} --omegaAlpha {params.substitution_rate} --codon \
+            --createInfo --createNewick --createPhylip --scale 0.005 --treeFile {input.tree_file} --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 \
+            --invariable 0.1 --alpha {params.rate_parameter} --omegaAlpha {params.rate_parameter} --codon \
             --reference {input.reference_genome} --createMAT'
 
 rule split_sequences:
@@ -112,9 +111,9 @@ checkpoint split_amplicons:
         container_dir=config["container_directory"]
     threads: config["threads"]
     resources:
-	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=config["threads"]
+	    mem_mb=lambda wildcards, attempt: 1000 * attempt, threads=config["threads"]
     shell:
-        "python scripts/error_modes.py --scheme {params.primer_scheme} --scheme-dir {params.scheme_dir} --input-dir {input.split_sequences} \
+        "venv/bin/python scripts/error_modes.py --scheme {params.primer_scheme} --scheme-dir {params.scheme_dir} --input-dir {input.split_sequences} \
             --output-dir {output} --container-dir {params.container_dir} --seed {params.seed} --dropout-prob {params.random_dropout_probability} \
             --dimer-prob {params.primer_dimer_probability} --match-mean {params.match_coverage_mean} --match-sd {params.match_coverage_sd} \
             --mismatch-mean {params.mismatch_coverage_mean} --mismatch-sd {params.mismatch_coverage_sd} --threads {threads}"
@@ -129,6 +128,8 @@ rule mask_assemblies:
         mask_assemblies=config['mask_assemblies']["apply_mask"]
     threads: 1
     run:
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]) == os.path.basename(output[0].replace(".fasta", ""))
         # make directory
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -170,7 +171,7 @@ rule mask_assemblies:
 
 rule truth_vcfs:
     input:
-        rules.mask_assemblies.output,
+        "masked_truth_assemblies/{SAMPLE}.fasta",
         config["reference_genome"],
         "amplicon_sequences"
     output:
@@ -209,11 +210,13 @@ rule truth_vcfs:
             truth_vcf_variants = truth_vcf[1].splitlines()[1:]
             first_line = [truth_vcf[1].splitlines()[1]]
             truth_vcf_variants.sort(key=lambda x: int(x.split("\t")[1]))
-            truth_vcf[1] = "\n".join(first_line + truth_vcf_variants)
-            truth_vcf = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample".join(truth_vcf)
+            truth_vcf[1] = "\n".join(truth_vcf_variants)
+            truth_vcf = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n".join(truth_vcf) + "\n"
             with open(os.path.join(output_dir, "04.truth_dropped.vcf"), "w") as truth_vcf_out:
                 truth_vcf_out.write("\n".join(truth_vcf.splitlines()[1:]))
 
+        # check the truth vcf input sample matches the output
+        assert os.path.basename(input[0].replace(".fasta", "")) == os.path.basename(output[0])
         # make directory
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -278,6 +281,8 @@ rule simulate_art_reads:
                         ' -l ' + read_length + ' -f ' + str(coverage) + ' -o ' + read_file
                 shell(shell_command)
 
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]) == os.path.basename(output[0])
         # make output dirs
         output_dirs = [os.path.dirname(output[0]), output[0]]
         for o in output_dirs:
@@ -332,6 +337,8 @@ rule simulate_badread_reads:
                 shell(shell_command)
             return
 
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]) == os.path.basename(output[0])
         # make output dirs
         output_dirs = [os.path.dirname(output[0]), output[0]]
         for o in output_dirs:
@@ -350,7 +357,7 @@ rule simulate_badread_reads:
 
 rule cat_art_reads:
     input:
-        rules.simulate_art_reads.output
+        "ART_read_output/{SAMPLE}"
     output:
         fw_read="concatenated_ART_reads/{SAMPLE}_1.fastq",
         rv_read="concatenated_ART_reads/{SAMPLE}_2.fastq"
@@ -359,6 +366,8 @@ rule cat_art_reads:
     log:
         "logs/concatenate_art/{SAMPLE}.log"
     run:
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]) == os.path.basename(output[0]).replace("_1.fastq", "") and os.path.basename(input[0]) == os.path.basename(output[1]).replace("_2.fastq", "")
         # make output dirs
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -376,7 +385,7 @@ rule cat_art_reads:
 
 rule cat_badread_reads:
     input:
-        rules.simulate_badread_reads.output
+        "Badread_read_output/{SAMPLE}"
     output:
         "concatenated_Badread_reads/{SAMPLE}.fastq"
     resources:
@@ -384,6 +393,8 @@ rule cat_badread_reads:
     log:
         "logs/concatenate_badread/{SAMPLE}.log"
     run:
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]) == os.path.basename(output[0]).replace(".fastq", "")
         # make output dirs
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -403,8 +414,8 @@ rule cat_badread_reads:
 
 rule viridian_art_assemble:
     input:
-        fw_read=rules.cat_art_reads.output.fw_read,
-        rv_read=rules.cat_art_reads.output.rv_read
+        fw_read="concatenated_ART_reads/{SAMPLE}_1.fastq",
+        rv_read="concatenated_ART_reads/{SAMPLE}_2.fastq"
     output:
         directory("viridian_ART_assemblies/{SAMPLE}")
     resources:
@@ -429,6 +440,8 @@ rule viridian_art_assemble:
                     --outdir " + output + "/"
             shell(viridian_command)
 
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]).replace("_1.fastq", "") == os.path.basename(output[0]) and os.path.basename(input[1]).replace("_2.fastq", "") == os.path.basename(output[0])
         # make the output directory
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -442,14 +455,14 @@ rule viridian_art_assemble:
 
 rule viridian_badread_assemble:
     input:
-        rules.cat_badread_reads.output
+        "concatenated_Badread_reads/{SAMPLE}.fastq"
     output:
         directory("viridian_Badread_assemblies/{SAMPLE}")
     resources:
 	    mem_mb=lambda wildcards, attempt: 1000 * attempt
     threads: 1
     log:
-        "logs/viridian/{SAMPLE}.log"
+        "logs/viridian_assemble/{SAMPLE}.log"
     params:
         viridian_container=config["viridian_assemble"]["viridian_container"]
     run:
@@ -464,7 +477,8 @@ rule viridian_badread_assemble:
                     --reads " + sample + " \
                     --outdir " + output + "/"
             shell(viridian_command)
-
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]).replace(".fastq", "") == os.path.basename(output[0])
         # make the output directory
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -476,13 +490,13 @@ rule viridian_badread_assemble:
 
 rule artic_art_assemble:
     input:
-        fw_read=rules.cat_art_reads.output.fw_read,
-        rv_read=rules.cat_art_reads.output.rv_read,
+        fw_read="concatenated_ART_reads/{SAMPLE}_1.fastq",
+        rv_read="concatenated_ART_reads/{SAMPLE}_2.fastq",
         amplicon_sequences="amplicon_sequences"
     output:
         directory("artic_ART_assemblies/{SAMPLE}")
     resources:
-	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=2
+	    mem_mb=lambda wildcards, attempt: 1000 * attempt, threads=2
     threads: 2
     log:
         "logs/artic_assemble/{SAMPLE}.log"
@@ -491,7 +505,7 @@ rule artic_art_assemble:
         primer_scheme=config["primer_scheme"],
         main_nf=config["artic_assemble"]["main_nf"],
         scheme_dir=config["artic_assemble"]["scheme_url"],
-        nextflow_path=config["artic_assemble"]["nextflow_path"]
+        nextflow_path=config["nextflow_path"]
     run:
         def illumina_artic_assemble(forward_rd,
                                     reverse_rd,
@@ -523,7 +537,8 @@ rule artic_art_assemble:
             # write out the masked simulated sequence
             with open(filename.replace("consensus", "consensus_trimmed"), "w") as outGen:
                 outGen.write("\n".join([">" + sample_name, "".join(sample_sequence)]))
-
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]).replace("_1.fastq", "") == os.path.basename(output[0]) and os.path.basename(input[1]).replace("_2.fastq", "") == os.path.basename(output[0])
         # make output directory
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -551,9 +566,9 @@ rule artic_art_assemble:
                                 params.primer_scheme,
                                 regions_covered)
 
-rule artic_badread_assemble:
+rule epi2me_badread_assemble:
     input:
-        rules.cat_badread_reads.output,
+        "concatenated_Badread_reads/{SAMPLE}.fastq",
         "amplicon_sequences"
     output:
         directory("artic_Badread_assemblies/{SAMPLE}")
@@ -561,31 +576,28 @@ rule artic_badread_assemble:
 	    mem_mb=lambda wildcards, attempt: 1000 * attempt
     threads: 1
     log:
-        "logs/artic/{SAMPLE}.log"
+        "logs/epi2me/{SAMPLE}.log"
     params:
-        artic_nanopore_container=config["artic_assemble"]["nanopore_workflow_container"],
+        main_nf=config["epi2me_badread_assemble"]["main_nf"],
+        cache_dir=config["epi2me_badread_assemble"]["nxf_sing_cache"],
         primer_scheme=config["primer_scheme"],
-        main_nf=config["artic_assemble"]["main_nf"],
-        scheme_dir=config["artic_assemble"]["scheme_url"],
-        nextflow_path=config["artic_assemble"]["nextflow_path"]
+        nextflow_path=config["nextflow_path"]
     run:
-        def nanopore_artic_assemble(read_file,
-                                    sif_file,
-                                    main_nf,
-                                    scheme_url,
-                                    output_dir,
-                                    nextflow_path,
-                                    primer_scheme,
-                                    regions_covered):
+        def epi2me_artic_assemble(main_nf,
+                                output_dir,
+                                scheme,
+                                read_file,
+                                regions_covered,
+                                nextflow_path):
             """run nanopore artic nextflow pipeline"""
             if not os.path.exists(read_file + ".gz"):
                 shell("gzip " + read_file)
             read_file = read_file + ".gz"
-            shell_command = "venv/bin/python scripts/run_connor_pipeline.py --sif " + sif_file + " "
-            shell_command += "--main_nf " + main_nf + " --outdir " + output_dir + " "
-            shell_command += "--ont " + read_file + " "
-            shell_command += "--scheme_url " + scheme_url + " --scheme_version " + primer_scheme + " --nextflow_path " + nextflow_path + " "
-            shell_command += "--sample_name " + os.path.basename(output_dir)
+            shell_command = "venv/bin/python scripts/run_epi2me.py --main_nf " + main_nf + " "
+            shell_command += "--force --sample_name " + os.path.basename(output_dir) + " "
+            shell_command += "--work_root_dir " + output_dir + " --outdir " + output_dir + " "
+            shell_command += "--scheme_version ARTIC/" + scheme + " "
+            shell_command += "--reads " + read_file + " --nextflow_path " + nextflow_path
             if not os.path.exists(read_file.replace(".gz", "")):
                 shell_command += " && gunzip " + read_file
             shell(shell_command)
@@ -597,7 +609,8 @@ rule artic_badread_assemble:
             # write out the masked simulated sequence
             with open(filename.replace("consensus", "consensus_trimmed"), "w") as outGen:
                 outGen.write("\n".join([">" + sample_name, "".join(sample_sequence)]))
-
+        # check the input sample matches the output sample
+        assert os.path.basename(input[0]).replace(".fastq", "") == os.path.basename(output[0])
         # make output directory
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -615,14 +628,13 @@ rule artic_badread_assemble:
                             "scheme_end": scheme_end}
         del amplicon_stats
         # run artic assembly pipeline
-        nanopore_artic_assemble(input[0],
-                                params.artic_nanopore_container,
-                                params.main_nf,
-                                params.scheme_dir,
-                                output[0],
-                                params.nextflow_path,
-                                params.primer_scheme,
-                                regions_covered)
+        epi2me_artic_assemble(params.main_nf,
+                            output[0],
+                            params.primer_scheme,
+                            input[0],
+                            regions_covered,
+                            params.nextflow_path)
+
 
 def aggregated_va_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
@@ -636,7 +648,7 @@ def aggregated_aa_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
     return expand("artic_ART_assemblies/{sample}", sample=glob_wildcards(os.path.join("artic_ART_assemblies", "{sample}")).sample)
 
-def aggregated_ab_assemblies(wildcards):
+def aggregated_eb_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
     return expand("artic_Badread_assemblies/{sample}", sample=glob_wildcards(os.path.join("artic_Badread_assemblies", "{sample}")).sample)
 
@@ -687,7 +699,7 @@ rule viridian_covid_truth_eval:
 rule artic_covid_truth_eval:
     input:
         aggregated_aa_assemblies,
-        aggregated_ab_assemblies,
+        aggregated_eb_assemblies,
         aggregated_tvs
     output:
         directory("cte_artic_output")
@@ -696,6 +708,8 @@ rule artic_covid_truth_eval:
     params:
         container_dir=config["container_directory"],
         primer_scheme=config["primer_scheme"]
+    resources:
+	    mem_mb=lambda wildcards, attempt: 1000 * attempt
     run:
         # make output dirs
         for sub_dir in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
@@ -723,12 +737,14 @@ rule build_usher_phylogenies:
     input:
         aggregated_tas,
         aggregated_aa_assemblies,
-        aggregated_ab_assemblies,
+        aggregated_eb_assemblies,
         aggregated_va_assemblies,
         aggregated_vb_assemblies
     output:
         directory("usher_phylogenies")
     threads:
         config["threads"]
+    resources:
+	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=config["threads"]
     shell:
         "bash scripts/ucscVcfUsher.sh"

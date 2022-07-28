@@ -4,18 +4,19 @@ primer_scheme: V4
 scheme_dir: primer_schemes
 seed: 2022
 container_directory: singularity
+nextflow_path: /home/daniel/Documents/GitHub/viridian_simulations_workflow/nextflow
 
 VGsim:
   rate_file: VGsim_params/rate_file.rt
   iterations: 10000000
   pp_population_model_file: VGsim_params/pp_population.pp
   mg_population_model_file: VGsim_params/mg_population.mg
-  sample_size: 5
+  sample_size: 10000
 
 phastSim:
   tree_file: newick_output.nwk
   output_dir: phastSim_output
-  substitution_rate: 0.0002
+  rate_parameter: 1
 
 split_amplicons:
   random_dropout_probability: 0.001
@@ -29,11 +30,13 @@ simulate_reads:
   illumina_read_length: 250
 
 artic_assemble:
-  nextflow_path: /home/daniel/Documents/GitHub/viridian_simulations_workflow/nextflow
   scheme_url: https://github.com/artic-network/primer-schemes
   main_nf: singularity/ncov2019-artic-nf/main.nf
   illumina_workflow_container: singularity/ncov2019-artic-nf/artic-ncov2019-illumina.sif
-  nanopore_workflow_container: singularity/ncov2019-artic-nf/artic-ncov2019-nanopore.sif
+
+epi2me_badread_assemble:
+  main_nf: /nfs/research/zi/mhunt/Covid/Epi2me/wf-artic/main.nf
+  nxf_sing_cache: /hps/nobackup/iqbal/dander/viridian_simulations_workflow/singularity/epi2me/nf_cache
 
 mask_assemblies:
   apply_mask: False
