@@ -74,7 +74,7 @@ rule phastSim_evolution:
         rate_parameter=config['phastSim']["rate_parameter"]
     shell:
         'mkdir {output} && singularity run {params.container_dir}/images/phastSim.img --outpath {output}/ --seed {params.seed} --createFasta \
-            --createInfo --createNewick --createPhylip --scale 0.01 --treeFile {input.tree_file} --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 \
+            --createInfo --createNewick --createPhylip --scale 0.005 --treeFile {input.tree_file} --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 \
             --invariable 0.1 --alpha {params.rate_parameter} --omegaAlpha {params.rate_parameter} --codon \
             --reference {input.reference_genome} --createMAT'
 

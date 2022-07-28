@@ -157,7 +157,6 @@ def align_primers(genomic_sequence,
         with open(bed_file, 'r') as bedIn:
             bed_content = bedIn.read().split('\t')
         samfile = pysam.AlignmentFile(alignment_file, "r")
-        print(alignment_file)
         # see if there are mismatches between the primer and the simulated sequence
         for mapped in samfile:
             sam_tags = mapped.tags
