@@ -197,7 +197,7 @@ rule truth_vcfs:
             shell(varifier_command)
             # append dropped amplicon information to the truth vcf
             #with open(os.path.join(output_dir, "04.truth.vcf"), "r") as truth_vcf_in:
-            with open(os.path.join(output_dir, "01.merged.vcf"), "r") as truth_vcf_in
+            with open(os.path.join(output_dir, "01.merged.vcf"), "r") as truth_vcf_in:
                 truth_vcf = truth_vcf_in.read()
             to_add = []
             variant_count = int(truth_vcf.splitlines()[-1].split("\t")[2])
