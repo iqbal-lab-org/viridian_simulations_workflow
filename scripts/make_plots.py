@@ -33,7 +33,7 @@ def run_cte(primer_scheme,
     count = 0
     for assem in assemblies:
         #vcf_file = os.path.join(truth_vcf_dir, os.path.basename(assem), "04.truth_dropped.vcf")
-        vcf_file = os.path.join(truth_vcf_dir, os.path.basename(assem), "04.truth.vcf")
+        vcf_file = os.path.join(truth_vcf_dir, os.path.basename(assem), "01.merged.vcf")
         if method == "artic":
             assembly_file = os.path.join(assem, "consensus_trimmed.fa")
         else:
