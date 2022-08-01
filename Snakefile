@@ -197,7 +197,7 @@ rule truth_vcfs:
             shell(varifier_command)
             # append dropped amplicon information to the truth vcf
             #with open(os.path.join(output_dir, "04.truth.vcf"), "r") as truth_vcf_in:
-            with open(os.path.join(output_dir, "01.merged.vcf"), "r") as truth_vcf_in:
+            with open(os.path.join(output_dir, "04.truth.vcf"), "r") as truth_vcf_in:
                 truth_vcf = truth_vcf_in.read()
             to_add = []
             variant_count = int(truth_vcf.splitlines()[-1].split("\t")[2])
@@ -213,7 +213,7 @@ rule truth_vcfs:
             truth_vcf_variants.sort(key=lambda x: int(x.split("\t")[1]))
             truth_vcf[1] = "\n".join(truth_vcf_variants)
             truth_vcf = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n".join(truth_vcf) + "\n"
-            with open(os.path.join(output_dir, "01.merged_dropped.vcf"), "w") as truth_vcf_out:
+            with open(os.path.join(output_dir, "04.truth_dropped.vcf"), "w") as truth_vcf_out:
                 truth_vcf_out.write("\n".join(truth_vcf.splitlines()[1:]))
 
         # check the truth vcf input sample matches the output
