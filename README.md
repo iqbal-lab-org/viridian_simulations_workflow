@@ -30,13 +30,6 @@ snakemake --cores 1
 * ```primer_scheme_dir```: GitHub repository of primer schemes for the artic assembly pipeline (usually https://github.com/artic-network/primer-schemes).
 * ```seed```: Start seed.
 
-### VGsim:
-* ```rate_file```: A file specifying per haplotype birth, death, sampling and migration rates
-* ```iterations```: Maximum number of iterations to run the model.
-* ```pp_population_model_file```: File specifying number, population size and contact rates of host populations to model.
-* ```mg_population_model_file```: File containing matrix of contact rates between the modelled host populations.
-* ```sample_size```: Number of SARS-CoV-2 samples to draw before terminating the simulation.
-
 ### phastSim:
 * ```tree_file```: Newick tree of SARS-CoV-2 simulated genomes.
 * ```output_dir```: Output directory name for phastSim
