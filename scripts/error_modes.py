@@ -455,7 +455,7 @@ def main():
     args = get_options()
     # import correct primers for primer scheme
     primer_df, pool1_primers, pool2_primers = find_primer_scheme(args.primer_scheme,
-                                                                 "primer_schemes")
+                                                                "primer_schemes")
     # create output directory
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
@@ -470,18 +470,18 @@ def main():
     ]
     for subset in tqdm(job_list):
         amplicon_results = Parallel(n_jobs=args.threads, prefer="threads")(delayed(extract_amplicons)(primer_df,
-                                                                                                      genomic_sequence,
-                                                                                                      args.random_dropout_probability,
-                                                                                                      args.match_coverage_mean,
-                                                                                                      args.match_coverage_sd,
-                                                                                                      args.mismatch_coverage_mean,
-                                                                                                      args.mismatch_coverage_sd,
-                                                                                                      args.primer_dimer_probability,
-                                                                                                      pool1_primers,
-                                                                                                      pool2_primers,
-                                                                                                      args.seed,
-                                                                                                      args.output_dir,
-                                                                                                      args.container_dir) for genomic_sequence in subset)
+                                                                                                    genomic_sequence,
+                                                                                                    args.random_dropout_probability,
+                                                                                                    args.match_coverage_mean,
+                                                                                                    args.match_coverage_sd,
+                                                                                                    args.mismatch_coverage_mean,
+                                                                                                    args.mismatch_coverage_sd,
+                                                                                                    args.primer_dimer_probability,
+                                                                                                    pool1_primers,
+                                                                                                    pool2_primers,
+                                                                                                    args.seed,
+                                                                                                    args.output_dir,
+                                                                                                    args.container_dir) for genomic_sequence in subset)
         for elem in amplicon_results:
             for sample in elem:
                 sample_coverages[sample] = elem[sample][0]

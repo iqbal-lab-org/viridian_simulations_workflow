@@ -1,17 +1,10 @@
-threads: 8
+threads: 96
 reference_genome: reference_genome.fasta
 primer_scheme: V4
 scheme_dir: primer_schemes
 seed: 2022
 container_directory: singularity
-nextflow_path: /home/daniel/Documents/GitHub/viridian_simulations_workflow/nextflow
-
-VGsim:
-  rate_file: VGsim_params/rate_file.rt
-  iterations: 10000000
-  pp_population_model_file: VGsim_params/pp_population.pp
-  mg_population_model_file: VGsim_params/mg_population.mg
-  sample_size: 10000
+nextflow_path: /hps/nobackup/iqbal/dander/viridian_simulations_workflow/nextflow
 
 phastSim:
   tree_file: newick_output.nwk
@@ -42,7 +35,7 @@ mask_assemblies:
   apply_mask: False
 
 viridian_assemble:
-  viridian_container: singularity/viridian_workflow/viridian_workflow.img
+  viridian_container: singularity/viridian_workflow/18.07.22.viridian_workflow.img
 
 phylogenies:
   batch_size: 10000

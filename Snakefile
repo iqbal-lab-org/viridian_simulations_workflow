@@ -44,28 +44,10 @@ rule all:
         "cte_artic_output",
         "usher_phylogenies"
 
-rule VGsim_tree:
-    input:
-        rate_file=config['VGsim']['rate_file'],
-        pp_population_model_file=config['VGsim']['pp_population_model_file'],
-        mg_population_model_file=config['VGsim']['mg_population_model_file']
-    output:
-        'newick_output.nwk'
-    singularity:
-        'viridian_simulations_workflow.img'
-    params:
-        seed=config['seed'],
-        iterations=config['VGsim']['iterations'],
-        sample_size=config['VGsim']['sample_size'],
-        container_dir=config["container_directory"]
-    shell:
-        'singularity run {params.container_dir}/images/VGsim.img {input.rate_file} -it {params.iterations} -pm {input.pp_population_model_file} \
-            {input.mg_population_model_file} -seed {params.seed} -nwk --sampleSize {params.sample_size}'
-
 rule phastSim_evolution:
     input:
-        tree_file=rules.VGsim_tree.output,
-        reference_genome="omicron.fasta"#config["reference_genome"]
+        tree_file="reformatted_tree.nwk",
+        reference_genome=config["reference_genome"]
     output:
         directory(config['phastSim']['output_dir'])
     params:
@@ -74,7 +56,7 @@ rule phastSim_evolution:
         rate_parameter=config['phastSim']["rate_parameter"]
     shell:
         'mkdir {output} && singularity run {params.container_dir}/images/phastSim.img --outpath {output}/ --seed {params.seed} --createFasta \
-            --createInfo --createNewick --createPhylip --scale 0.005 --treeFile {input.tree_file} --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 \
+            --createInfo --createNewick --createPhylip --scale 0.0001 --treeFile {input.tree_file} --hyperMutProbs 0.001 0.001 --hyperMutRates 2.0 5.0 \
             --invariable 0.1 --alpha {params.rate_parameter} --omegaAlpha {params.rate_parameter} --codon \
             --reference {input.reference_genome} --createMAT'
 
@@ -196,6 +178,7 @@ rule truth_vcfs:
             varifier_command += " " + assembly + " " + reference + " " + output_dir
             shell(varifier_command)
             # append dropped amplicon information to the truth vcf
+            #with open(os.path.join(output_dir, "04.truth.vcf"), "r") as truth_vcf_in:
             with open(os.path.join(output_dir, "04.truth.vcf"), "r") as truth_vcf_in:
                 truth_vcf = truth_vcf_in.read()
             to_add = []

@@ -2,7 +2,7 @@
 mafftScript=scripts/global_profile_alignment.sh
 taxoniumGb=scripts/hu1.gb
 refFa=reference_genome.fasta
-numThreads=8
+numThreads=64
 
 # make output dir
 mkdir usher_phylogenies usher_phylogenies/truth_phylogenies usher_phylogenies/viridian_phylogenies usher_phylogenies/artic_phylogenies
