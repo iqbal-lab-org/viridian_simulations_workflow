@@ -639,10 +639,6 @@ def aggregated_tvs(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
     return expand("truth_vcfs/{sample}", sample=glob_wildcards(os.path.join("truth_vcfs", "{sample}")).sample)
 
-def aggregated_tas(wildcards):
-    checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("masked_truth_assemblies/{sample}", sample=glob_wildcards(os.path.join("masked_truth_assemblies", "{sample}")).sample)
-
 rule viridian_covid_truth_eval:
     input:
         aggregated_va_assemblies,
