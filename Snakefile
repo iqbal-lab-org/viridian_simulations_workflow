@@ -714,7 +714,7 @@ rule artic_covid_truth_eval:
 
 rule build_usher_phylogenies:
     input:
-        aggregated_tas,
+        aggregated_tvs,
         aggregated_aa_assemblies,
         aggregated_eb_assemblies,
         aggregated_va_assemblies,
