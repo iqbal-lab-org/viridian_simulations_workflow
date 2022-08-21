@@ -35,7 +35,7 @@ mask_assemblies:
   apply_mask: False
 
 viridian_assemble:
-  viridian_container: singularity/viridian_workflow/18.07.22.viridian_workflow.img
+  viridian_container: singularity/viridian_workflow/vwf.jeff-k.20220818.c1b5d6705478ab2.img
 
 phylogenies:
   batch_size: 10000
