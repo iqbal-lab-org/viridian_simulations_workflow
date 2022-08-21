@@ -329,21 +329,22 @@ def extract_amplicons(primer_df,
                                     "primer_mismatches": total_primer_mismatches,
                                     "mismatch_positions": amplicon_primer_mismatches}
         # apply an error mode if there are mismatches unless a SNP occurs in the first or last primer
-        if not total_primer_mismatches == 0 and (any(left_primers['name'][position] == name for name in ["SARS-CoV-2_1_LEFT", "nCoV-2019_1_LEFT"]) \
+        if (any(left_primers['name'][position] == name for name in ["SARS-CoV-2_1_LEFT", "nCoV-2019_1_LEFT"]) \
                 or any(right_primers['name'][position] == name for name in ["SARS-CoV-2_99_RIGHT", "nCoV-2019_99_RIGHT"])):
-            new_amplicon = revert_primer(amplicon,
+            if not total_primer_mismatches == 0:
+                new_amplicon = revert_primer(amplicon,
                                             left_primers['seq'][position],
                                             left_primers['start'][position],
                                             left_primers['end'][position],
                                             right_primers['seq'][position],
                                             right_primers['start'][position],
                                             amplicon_primer_mismatches)
-            # remove the SNPs in the primer binding site in the truth sequence if SNP is in the first or last primer of the scheme
-            with open(sequence_file, "w") as modSeq:
-                modSeq.write(">" + sample_name + "\n" + sample_sequence.replace(amplicon, new_amplicon))
-            # continue as if there was no artefact in the amplicon
-            amplicon = new_amplicon
-            total_primer_mismatches = 0
+                # remove the SNPs in the primer binding site in the truth sequence if SNP is in the first or last primer of the scheme
+                with open(sequence_file, "w") as modSeq:
+                    modSeq.write(">" + sample_name + "\n" + sample_sequence.replace(amplicon, new_amplicon))
+                # continue as if there was no artefact in the amplicon
+                amplicon = new_amplicon
+                total_primer_mismatches = 0
         else:
             # determine if this amplicon will randomly drop out
             if rndm.binomial(n=1, p=(random_dropout_probability)) == 1:
@@ -352,6 +353,8 @@ def extract_amplicons(primer_df,
                 amplicon_stats[primer_id]["errors"].append("random_dropout")
                 amplicon_coverages[primer_id] = 0
                 # write out amplicon file
+                if not os.path.exists(os.path.join(output_dir, sample_name)):
+                    os.mkdir(os.path.join(output_dir, sample_name))
                 with open(os.path.join(output_dir, sample_name, primer_id + '.fasta'), 'w') as outFasta:
                     outFasta.write('>' + primer_id + '\n' + amplicon)
                 continue
