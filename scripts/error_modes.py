@@ -328,16 +328,6 @@ def extract_amplicons(primer_df,
                                     "errors": [],
                                     "primer_mismatches": total_primer_mismatches,
                                     "mismatch_positions": amplicon_primer_mismatches}
-        # determine if this amplicon will randomly drop out
-        if rndm.binomial(n=1, p=(random_dropout_probability)) == 1:
-            amplicon_stats[primer_id]['has_error'] = True
-            amplicon_stats[primer_id]["coverage"] = 0
-            amplicon_stats[primer_id]["errors"].append("random_dropout")
-            amplicon_coverages[primer_id] = 0
-            # write out amplicon file
-            with open(os.path.join(output_dir, sample_name, primer_id + '.fasta'), 'w') as outFasta:
-                outFasta.write('>' + primer_id + '\n' + amplicon)
-            continue
         # apply an error mode if there are mismatches unless a SNP occurs in the first or last primer
         if not total_primer_mismatches == 0 and (any(left_primers['name'][position] == name for name in ["SARS-CoV-2_1_LEFT", "nCoV-2019_1_LEFT"]) \
                 or any(right_primers['name'][position] == name for name in ["SARS-CoV-2_99_RIGHT", "nCoV-2019_99_RIGHT"])):
@@ -354,6 +344,17 @@ def extract_amplicons(primer_df,
             # continue as if there was no artefact in the amplicon
             amplicon = new_amplicon
             total_primer_mismatches = 0
+        else:
+            # determine if this amplicon will randomly drop out
+            if rndm.binomial(n=1, p=(random_dropout_probability)) == 1:
+                amplicon_stats[primer_id]['has_error'] = True
+                amplicon_stats[primer_id]["coverage"] = 0
+                amplicon_stats[primer_id]["errors"].append("random_dropout")
+                amplicon_coverages[primer_id] = 0
+                # write out amplicon file
+                with open(os.path.join(output_dir, sample_name, primer_id + '.fasta'), 'w') as outFasta:
+                    outFasta.write('>' + primer_id + '\n' + amplicon)
+                continue
         if not total_primer_mismatches == 0:
             # apply reduced coverage due to SNP or reference primer reversion with 50% probability
             reference_reversion = rndm.binomial(n=1, p=(0.5))
