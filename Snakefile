@@ -315,7 +315,7 @@ rule simulate_badread_reads:
                 # skip badread if the coverage is 0
                 if str(coverage) == "0":
                     continue
-                shell_command = 'singularity run ' + container_dir + '/images/Badread.img simulate --reference ' + amplicon_file + ' --quantity ' + str(coverage) + 'x \
+                shell_command = 'singularity run ' + container_dir + '/images/Badread.img simulate --identity 94,98.5,3 --reference ' + amplicon_file + ' --quantity ' + str(coverage) + 'x \
                 |         gzip > ' + read_file
                 shell(shell_command)
             return
