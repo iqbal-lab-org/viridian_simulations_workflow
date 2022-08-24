@@ -341,8 +341,9 @@ def extract_amplicons(primer_df,
                                             right_primers['start'][position],
                                             amplicon_primer_mismatches)
                 # remove the SNPs in the primer binding site in the truth sequence if SNP is in the first or last primer of the scheme
+                sample_sequence = sample_sequence.replace(amplicon, new_amplicon)
                 with open(sequence_file, "w") as modSeq:
-                    modSeq.write(">" + sample_name + "\n" + sample_sequence.replace(amplicon, new_amplicon))
+                    modSeq.write(">" + sample_name + "\n" + sample_sequence)
                 # continue as if there was no artefact in the amplicon
                 amplicon = new_amplicon
                 total_primer_mismatches = 0
