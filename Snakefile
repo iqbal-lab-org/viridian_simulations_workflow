@@ -8,8 +8,7 @@ import shutil
 from tqdm import tqdm
 
 from scripts.error_modes import clean_genome, find_primer_scheme
-from scripts.phylogenies import combine_vcfs, initiate_phylogeny, add_samples, optimise_phylogeny
-from scripts.make_plots import run_cte, run_varifier, generate_plots, generate_heatmap, plot_varifier_calls, pairwise_compare, count_dropped_bases
+from scripts.make_plots import run_cte, run_varifier
 
 configfile: 'config.yml'
 
