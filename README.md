@@ -11,7 +11,7 @@ git clone https://github.com/iqbal-lab-org/viridian_simulations_workflow
 cd viridian_simulations_workflow
 # install the python dependencies in a virtual env
 python3 -m venv venv
-source ./venv/bin/activate
+source venv/bin/activate
 pip3 install -r requirements.txt
 # build the containers
 python3 singularity/build_images.py
@@ -51,9 +51,6 @@ snakemake --cores 1
 
 ### artic_assemble
 * ```nextflow_path```: Path to nextflow installation.
-
-### build_simulated_phylogeny, build_viridian_phylogeny, build_artic_phylogeny
-* ```batch_size```: Number of samples to add to the phylogeny with UshER before running matOptimize.
 
 ## Testing
 To test the functions in ```scripts/error_modes.py```, run ```python tests/run_tests.py```
