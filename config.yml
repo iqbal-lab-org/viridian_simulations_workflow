@@ -35,7 +35,4 @@ mask_assemblies:
   apply_mask: False
 
 viridian_assemble:
-  viridian_container: singularity/viridian_workflow/18.07.22.viridian_workflow.img
-
-phylogenies:
-  batch_size: 10000
+  viridian_container: /nfs/research/zi/mhunt/Containers/vwf.20220908.6ea9cdbf.cylon_test.337121a.img

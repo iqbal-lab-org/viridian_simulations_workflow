@@ -16,7 +16,7 @@ import tempfile
 from tqdm import tqdm
 
 def find_primer_scheme(scheme,
-                       scheme_dir):
+                    scheme_dir):
     """Determine the primer scheme and load the metadata"""
     if scheme == "V3":
         # path of V3 artic primer metadata
@@ -96,8 +96,8 @@ def find_primer_scheme(scheme,
         raise ValueError('Only "V3", "V4" and "V4.1" primer schemes are supported')
 
 def correct_alignment(sample_sequence,
-                      bed_content,
-                      primer_seq):
+                    bed_content,
+                    primer_seq):
     """Correct cases where bwa has soft clipped the primer alignment. \
         For now we are assuming there are no INDELs in the primer binding sites"""
     primer_start = int(bed_content[1])
@@ -125,10 +125,10 @@ def correct_alignment(sample_sequence,
     return sam_tags, bed_content
 
 def align_primers(genomic_sequence,
-                  primer_df,
-                  sample_sequence,
-                  output_dir,
-                  container_dir):
+                primer_df,
+                sample_sequence,
+                output_dir,
+                container_dir):
     """Align primers to genome using BWA and return start and end positions"""
     aligned_starts = []
     aligned_ends = []
@@ -162,8 +162,8 @@ def align_primers(genomic_sequence,
             sam_tags = mapped.tags
             if not mapped.cigar[0][1] == 0:
                 sam_tags, bed_content = correct_alignment(sample_sequence,
-                                                          bed_content,
-                                                          mapped.query_sequence)
+                                                        bed_content,
+                                                        mapped.query_sequence)
             mismatches = [tag[1] for tag in sam_tags if tag[0] == "NM"][0]
             mismatch_dict = {}
             if not mismatches == 0:
@@ -217,7 +217,7 @@ def populate_primer_dfs(left_primers, right_primers):
     return populated_left_df, populated_right_df
 
 def refine_primers(primer_df,
-                   alignment_stats):
+                alignment_stats):
     """This function selects the best matching left and right primer for each amplicon \
         if both match, then the non-alternative primer is selected"""
     rows_to_drop = []
@@ -242,9 +242,9 @@ def refine_primers(primer_df,
         raise ValueError('Left and right primers are different lengths')
 
 def mismatch_positions(left_mismatches,
-                       right_mismatches,
-                       right_primer_start,
-                       left_primer_start):
+                    right_mismatches,
+                    right_primer_start,
+                    left_primer_start):
     """Make primer SNP positions relative to the amplicon"""
     mismatches = {}
     for l_snip in left_mismatches:
@@ -260,12 +260,12 @@ def reverse_complement(primer_sequence):
     return complement
 
 def revert_primer(amplicon,
-                 left_primer,
-                 left_primer_start,
-                 left_primer_end,
-                 right_primer,
-                 right_primer_start,
-                 amplicon_primer_mismatches):
+                left_primer,
+                left_primer_start,
+                left_primer_end,
+                right_primer,
+                right_primer_start,
+                amplicon_primer_mismatches):
     """Swap the primer binding site sequence containing an SNP with \
         with the reference primer sequence"""
     for mismatch in amplicon_primer_mismatches:
@@ -276,32 +276,32 @@ def revert_primer(amplicon,
     return reverted
 
 def extract_amplicons(primer_df,
-                      sequence_file,
-                      random_dropout_probability,
-                      match_coverage_mean,
-                      match_coverage_sd,
-                      mismatch_coverage_mean,
-                      mismatch_coverage_sd,
-                      dimer_prob,
-                      pool1_primers,
-                      pool2_primers,
-                      seed,
-                      output_dir,
-                      container_dir):
+                    sequence_file,
+                    random_dropout_probability,
+                    match_coverage_mean,
+                    match_coverage_sd,
+                    mismatch_coverage_mean,
+                    mismatch_coverage_sd,
+                    dimer_prob,
+                    pool1_primers,
+                    pool2_primers,
+                    seed,
+                    output_dir,
+                    container_dir):
     """Identify best matching primer pairs and extract the amplicon sequence"""
-    # set the seed
-    rndm = RandomState(seed)
     # import the simulated squence
     sample_name, sample_sequence = clean_genome(sequence_file)
+    # set the seed as the samples name for reproducibility
+    rndm = RandomState(int(sample_name.split("_a")[0]))
     # we need to map primers to the simulated genomes so INDELs are properly considered
     aligned_primers, alignment_stats = align_primers(sequence_file,
-                                                     primer_df,
-                                                     sample_sequence,
-                                                     output_dir,
-                                                     container_dir)
+                                                    primer_df,
+                                                    sample_sequence,
+                                                    output_dir,
+                                                    container_dir)
     # refine primers to the best hits
     left_primers, right_primers = refine_primers(aligned_primers,
-                                                 alignment_stats)
+                                                alignment_stats)
     # a dictionary to keep track of the frequency and positions of error modes
     amplicon_stats = {}
     # store amplicon coverages for pickling
@@ -328,18 +328,70 @@ def extract_amplicons(primer_df,
                                     "errors": [],
                                     "primer_mismatches": total_primer_mismatches,
                                     "mismatch_positions": amplicon_primer_mismatches}
-        # determine if this amplicon will randomly drop out
-        if rndm.binomial(n=1, p=(random_dropout_probability)) == 1:
+        # apply an error mode if there are mismatches unless a SNP occurs in the first or last primer
+        terminal_amplicon = False
+        if (any(left_primers['name'][position] == name for name in ["SARS-CoV-2_1_LEFT", "nCoV-2019_1_LEFT"]) \
+                or any(right_primers['name'][position] == name for name in ["SARS-CoV-2_99_RIGHT", "nCoV-2019_99_RIGHT"])):
+            if not total_primer_mismatches == 0:
+                new_amplicon = revert_primer(amplicon,
+                                            left_primers['seq'][position],
+                                            left_primers['start'][position],
+                                            left_primers['end'][position],
+                                            right_primers['seq'][position],
+                                            right_primers['start'][position],
+                                            amplicon_primer_mismatches)
+                # remove the SNPs in the primer binding site in the truth sequence if SNP is in the first or last primer of the scheme
+                sample_sequence = sample_sequence.replace(amplicon, new_amplicon)
+                with open(sequence_file, "w") as modSeq:
+                    modSeq.write(">" + sample_name + "\n" + sample_sequence)
+                # continue as if there was no artefact in the amplicon
+                amplicon = new_amplicon
+                total_primer_mismatches = 0
+                amplicon_stats[primer_id]["primer_mismatches"] = total_primer_mismatches
+                amplicon_stats[primer_id]["mismatch_positions"] = []
+                terminal_amplicon = True
+            else:
+                terminal_amplicon = True
+        else:
+            # determine if this amplicon will randomly drop out
+            if rndm.binomial(n=1, p=(random_dropout_probability)) == 1:
+                amplicon_stats[primer_id]['has_error'] = True
+                amplicon_stats[primer_id]["coverage"] = 0
+                amplicon_stats[primer_id]["errors"].append("random_dropout")
+                amplicon_coverages[primer_id] = 0
+                # write out amplicon file
+                if not os.path.exists(os.path.join(output_dir, sample_name)):
+                    os.mkdir(os.path.join(output_dir, sample_name))
+                with open(os.path.join(output_dir, sample_name, primer_id + '.fasta'), 'w') as outFasta:
+                    outFasta.write('>' + primer_id + '\n' + amplicon)
+                continue
+            else:
+                pass
+        if not total_primer_mismatches == 0:
+            # apply reduced coverage due to SNP or reference primer reversion with 50% probability
+            reference_reversion = rndm.binomial(n=1, p=(0.5))
+            if not reference_reversion == 1:
+                coverage = -1
+                while coverage < 0:
+                    coverage = int(round(rndm.normal(loc=float(mismatch_coverage_mean),
+                                                    scale=float(mismatch_coverage_sd))))
+                amplicon_stats[primer_id]["errors"].append("primer_SNP")
+            # if the primer reverts to reference, maintain a high sequencing coverage
+            else:
+                amplicon = revert_primer(amplicon,
+                                        left_primers['seq'][position],
+                                        left_primers['start'][position],
+                                        left_primers['end'][position],
+                                        right_primers['seq'][position],
+                                        right_primers['start'][position],
+                                        amplicon_primer_mismatches)
+                coverage = -1
+                while coverage < 0:
+                    coverage = int(round(rndm.normal(loc=float(match_coverage_mean),
+                                                    scale=float(match_coverage_sd))))
+                amplicon_stats[primer_id]["errors"].append("primer_reversion")
             amplicon_stats[primer_id]['has_error'] = True
-            amplicon_stats[primer_id]["coverage"] = 0
-            amplicon_stats[primer_id]["errors"].append("random_dropout")
-            amplicon_coverages[primer_id] = 0
-            # write out amplicon file
-            with open(os.path.join(output_dir, sample_name, primer_id + '.fasta'), 'w') as outFasta:
-                outFasta.write('>' + primer_id + '\n' + amplicon)
-            continue
-        # determine if it's necessary to apply an error mode
-        if total_primer_mismatches == 0:
+        else:
             # determine sequencing coverage
             coverage = -1
             while coverage < 0:
@@ -355,13 +407,13 @@ def extract_amplicons(primer_df,
             for seq in pool_seqs:
                 for dimer_seq in [left_primers["seq"][position], right_primers["seq"][position]]:
                     if dimer_seq[-3:] == reverse_complement(seq[:3]) \
-                        and rndm.binomial(n=1, p=(dimer_prob)) == 1:
+                        and rndm.binomial(n=1, p=(dimer_prob)) == 1 and not terminal_amplicon:
                         amplicon = dimer_seq[:-3] + reverse_complement(seq)
                         dimer = True
                         if dimer_seq == right_primers["seq"][position]:
                             amplicon = reverse_complement(amplicon)
                     elif seq[-3:] == reverse_complement(dimer_seq[:3]) \
-                        and rndm.binomial(n=1, p=(dimer_prob)) == 1:
+                        and rndm.binomial(n=1, p=(dimer_prob)) == 1 and not terminal_amplicon:
                         amplicon = seq[-3:] + reverse_complement(dimer_seq)
                         dimer = True
                         if dimer_seq == right_primers["seq"][position]:
@@ -371,30 +423,6 @@ def extract_amplicons(primer_df,
             if dimer:
                 amplicon_stats[primer_id]['has_error'] = True
                 amplicon_stats[primer_id]["errors"].append("primer_dimer")
-        else:
-            # apply reduced coverage due to SNP or reference primer reversion with 50% probability
-            reference_reversion = rndm.binomial(n=1, p=(0.5))
-            if not reference_reversion == 1:
-                coverage = -1
-                while coverage < 0:
-                    coverage = int(round(rndm.normal(loc=float(mismatch_coverage_mean),
-                                                    scale=float(mismatch_coverage_sd))))
-                amplicon_stats[primer_id]["errors"].append("primer_SNP")
-            # if the primer reverts to reference, maintain a high sequencing coverage
-            else:
-                amplicon = revert_primer(amplicon,
-                                         left_primers['seq'][position],
-                                         left_primers['start'][position],
-                                         left_primers['end'][position],
-                                         right_primers['seq'][position],
-                                         right_primers['start'][position],
-                                         amplicon_primer_mismatches)
-                coverage = -1
-                while coverage < 0:
-                    coverage = int(round(rndm.normal(loc=float(match_coverage_mean),
-                                                    scale=float(match_coverage_sd))))
-                amplicon_stats[primer_id]["errors"].append("primer_reversion")
-            amplicon_stats[primer_id]['has_error'] = True
         amplicon_stats[primer_id]["coverage"] = coverage
         amplicon_coverages[primer_id] = coverage
         # save each amplicon as a separate fasta

@@ -315,7 +315,7 @@ rule simulate_badread_reads:
                 # skip badread if the coverage is 0
                 if str(coverage) == "0":
                     continue
-                shell_command = 'singularity run ' + container_dir + '/images/Badread.img simulate --reference ' + amplicon_file + ' --quantity ' + str(coverage) + 'x \
+                shell_command = 'singularity run ' + container_dir + '/images/Badread.img simulate --identity 94,98.5,3 --reference ' + amplicon_file + ' --quantity ' + str(coverage) + 'x \
                 |         gzip > ' + read_file
                 shell(shell_command)
             return
@@ -639,10 +639,6 @@ def aggregated_tvs(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
     return expand("truth_vcfs/{sample}", sample=glob_wildcards(os.path.join("truth_vcfs", "{sample}")).sample)
 
-def aggregated_tas(wildcards):
-    checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("masked_truth_assemblies/{sample}", sample=glob_wildcards(os.path.join("masked_truth_assemblies", "{sample}")).sample)
-
 rule viridian_covid_truth_eval:
     input:
         aggregated_va_assemblies,
@@ -718,7 +714,7 @@ rule artic_covid_truth_eval:
 
 rule build_usher_phylogenies:
     input:
-        aggregated_tas,
+        aggregated_tvs,
         aggregated_aa_assemblies,
         aggregated_eb_assemblies,
         aggregated_va_assemblies,

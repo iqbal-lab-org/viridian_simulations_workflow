@@ -7,4 +7,5 @@ pyfastaq
 pysam
 seaborn
 snakemake
+taxoniumtools
 tqdm

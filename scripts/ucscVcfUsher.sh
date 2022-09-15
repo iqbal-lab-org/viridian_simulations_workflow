@@ -45,7 +45,7 @@ for tech in ART Badread; do
     cp /dev/null usher_phylogenies/viridian_phylogenies/viridian_${tech}.fa
     for id in viridian_${tech}_assemblies/*; do
         echo ">${id##*/}" >> usher_phylogenies/viridian_phylogenies/viridian_${tech}.fa
-        tail -n+2 $id/masked.fasta >> usher_phylogenies/viridian_phylogenies/viridian_${tech}.fa
+        tail -n+2 $id/consensus.fa >> usher_phylogenies/viridian_phylogenies/viridian_${tech}.fa
         echo ""  >> usher_phylogenies/viridian_phylogenies/viridian_${tech}.fa
     done
     time bash $mafftScript -i usher_phylogenies/viridian_phylogenies/viridian_${tech}.fa -t $numThreads -o usher_phylogenies/viridian_phylogenies/viridian_${tech}.msa.fa
