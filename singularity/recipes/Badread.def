@@ -22,8 +22,11 @@ From: ubuntu:20.04
         python3-setuptools \
         python3-dev
     # install Badread
-    pip install git+https://github.com/rrwick/Badread.git
-
+    git clone https://github.com/rrwick/Badread.git
+    cd Badread
+    git checkout c2bdcbee3305345e773c456e8cbd3589a5561e2b
+    cd ../
+    pip install ./Badread
 
 %runscript
     badread "$@"
