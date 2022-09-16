@@ -77,6 +77,9 @@ def run_epi2me(
     outdir = os.path.abspath(outdir)
     nf_script = os.path.abspath(nf_script)
     reads = os.path.abspath(reads)
+    # make cache dir if it doesn't exist
+    if not os.path.exists(nxf_sing_cache):
+        os.mkdir(nxf_sing_cache)
     nxf_sing_cache = os.path.abspath(nxf_sing_cache)
     run_script = os.path.join(outdir, "run_nextflow.sh")
     log_info = {

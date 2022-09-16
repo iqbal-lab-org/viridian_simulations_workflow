@@ -19,8 +19,10 @@ python3 singularity/build_images.py
 
 ## Usage
 ```
-snakemake --cores 1
+snakemake --cores <threads>
 ```
+The pipeline takes a SARS-CoV-2 phylogeny titled "newick_output.nwk" as input, from which assemblies are simulated relative to a reference.
+
 ## Configuration
 
 ### General
