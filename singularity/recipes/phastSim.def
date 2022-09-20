@@ -23,7 +23,7 @@ From: ubuntu:20.04
         python3-setuptools \
         python3-dev \
     # install VGsim
-    pip install phastSim
+    pip install phastSim==0.0.4
 
 
 %runscript

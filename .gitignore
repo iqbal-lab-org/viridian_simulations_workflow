@@ -143,22 +143,6 @@ reference_genome.fasta.pac
 reference_genome.fasta.sa
 
 # software
-VGsim
-art_bin_MountRainier
-viridian
-racon
-viridian_workflow
-seq-align
-bwa
-minimap2
-varifier
-samtools
-samtools-1.14.tar.bz2
-htslib-1.14
-htslib-1.14.tar.bz2
-Badread
-bedtools2
-artbinmountrainier2016.06.05linux64.tgz
 nextflow
 
 # outputs
@@ -192,13 +176,12 @@ cte_viridian_output
 logs
 
 # singularity containers
-singularity/images/*
+singularity/images
 singularity/usher
 singularity/varifier
 singularity/viridian_workflow
 singularity/covid-truth-eval
-
-# artic pipeline
-ncov2019-artic-nf
-.nextflow
+singularity/ushonium
+singularity/ncov2019-artic-nf
+singularity/epi2me
 

@@ -8,30 +8,32 @@ import shutil
 from tqdm import tqdm
 
 from scripts.error_modes import clean_genome, find_primer_scheme
-from scripts.phylogenies import combine_vcfs, initiate_phylogeny, add_samples, optimise_phylogeny
-from scripts.make_plots import run_cte, run_varifier, generate_plots, generate_heatmap, plot_varifier_calls, pairwise_compare, count_dropped_bases
+from scripts.make_plots import run_cte, run_varifier
 
 configfile: 'config.yml'
 
+def list_samples():
+    return [os.path.basename(s) for s in glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s]
+
 def viridian_art_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("viridian_ART_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
+    return expand("viridian_ART_assemblies/{SAMPLE}", SAMPLE=list_samples())
 
 def viridian_badread_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("viridian_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
+    return expand("viridian_Badread_assemblies/{SAMPLE}", SAMPLE=list_samples())
 
 def artic_art_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("artic_ART_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
+    return expand("artic_ART_assemblies/{SAMPLE}", SAMPLE=list_samples())
 
 def artic_badread_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("artic_Badread_assemblies/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
+    return expand("epi2me_Badread_assemblies/{SAMPLE}", SAMPLE=list_samples())
 
 def truth_vcf_input(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("truth_vcfs/{SAMPLE}", SAMPLE=[os.path.basename(s) for s in  glob.glob(os.path.join("amplicon_sequences", "*")) if not "/amplicon" in s and not "tmp" in s])
+    return expand("truth_vcfs/{SAMPLE}", SAMPLE=list_samples())
 
 rule all:
     input:
@@ -42,7 +44,10 @@ rule all:
         truth_vcf_input,
         "cte_viridian_output",
         "cte_artic_output",
-        "usher_phylogenies"
+        "usher_phylogenies/artic_ART_phylogeny",
+        "usher_phylogenies/epi2me_Badread_phylogeny",
+        "usher_phylogenies/viridian_ART_phylogeny",
+        "usher_phylogenies/viridian_Badread_phylogeny"
 
 rule phastSim_evolution:
     input:
@@ -187,7 +192,8 @@ rule truth_vcfs:
                 start_pos = primer_df.loc[primer_df['name'] == dropped[0]].reset_index(drop=True)["ref_start"][0]
                 end_pos = primer_df.loc[primer_df['name'] == dropped[1]].reset_index(drop=True)["ref_end"][0]
                 variant_count += 1
-                variant_line = "MN908947.3\t" + str(start_pos) + "\t" + str(variant_count) + "\tG\tN\t.\tDROPPED_AMP\tAMP_START=" + str(int(start_pos)-1) + ";AMP_END=" + str(int(end_pos)-1) + "\tGT\t1/1\n"
+                variant_line = "MN908947.3\t" + str(start_pos) + "\t" + str(variant_count)
+                variant_line += "\tG\tN\t.\tDROPPED_AMP\tAMP_START=" + str(int(start_pos)-1) + ";AMP_END=" + str(int(end_pos)-1) + "\tGT\t1/1\n"
                 truth_vcf += variant_line
             truth_vcf = truth_vcf.split("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample")
             truth_vcf_variants = truth_vcf[1].splitlines()[1:]
@@ -215,7 +221,8 @@ rule truth_vcfs:
         # record amplicons dropped for each sample so dropped amplicons can be marked in the truth vcf
         amplicons_dropped[sample] = []
         for a in amplicons:
-            if amplicon_stats[sample][a]["has_error"] and any(amplicon_stats[sample][a]["errors"][0] == mode for mode in ["primer_SNP", "random_dropout", "primer_dimer"]):
+            if amplicon_stats[sample][a]["has_error"] and \
+                    any(amplicon_stats[sample][a]["errors"][0] == mode for mode in ["primer_SNP", "random_dropout", "primer_dimer"]):
                 amplicons_dropped[sample].append((a.split("---")[0], a.split("---")[1]))
         # import the primer scheme df to get amplicon positions relative to ref
         primer_df, pool1_primers, pool2_primers = find_primer_scheme(params.primer_scheme,
@@ -315,8 +322,8 @@ rule simulate_badread_reads:
                 # skip badread if the coverage is 0
                 if str(coverage) == "0":
                     continue
-                shell_command = 'singularity run ' + container_dir + '/images/Badread.img simulate --identity 94,98.5,3 --reference ' + amplicon_file + ' --quantity ' + str(coverage) + 'x \
-                |         gzip > ' + read_file
+                shell_command = 'singularity run ' + container_dir + '/images/Badread.img simulate --identity 94,98.5,3 --reference '
+                shell_command += amplicon_file + ' --quantity ' + str(coverage) + 'x |         gzip > ' + read_file
                 shell(shell_command)
             return
 
@@ -350,7 +357,8 @@ rule cat_art_reads:
         "logs/concatenate_art/{SAMPLE}.log"
     run:
         # check the input sample matches the output sample
-        assert os.path.basename(input[0]) == os.path.basename(output[0]).replace("_1.fastq", "") and os.path.basename(input[0]) == os.path.basename(output[1]).replace("_2.fastq", "")
+        assert os.path.basename(input[0]) == os.path.basename(output[0]).replace("_1.fastq", "") and \
+            os.path.basename(input[0]) == os.path.basename(output[1]).replace("_2.fastq", "")
         # make output dirs
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -424,7 +432,8 @@ rule viridian_art_assemble:
             shell(viridian_command)
 
         # check the input sample matches the output sample
-        assert os.path.basename(input[0]).replace("_1.fastq", "") == os.path.basename(output[0]) and os.path.basename(input[1]).replace("_2.fastq", "") == os.path.basename(output[0])
+        assert os.path.basename(input[0]).replace("_1.fastq", "") == os.path.basename(output[0]) and \
+            os.path.basename(input[1]).replace("_2.fastq", "") == os.path.basename(output[0])
         # make the output directory
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -521,7 +530,8 @@ rule artic_art_assemble:
             with open(filename.replace("consensus", "consensus_trimmed"), "w") as outGen:
                 outGen.write("\n".join([">" + sample_name, "".join(sample_sequence)]))
         # check the input sample matches the output sample
-        assert os.path.basename(input[0]).replace("_1.fastq", "") == os.path.basename(output[0]) and os.path.basename(input[1]).replace("_2.fastq", "") == os.path.basename(output[0])
+        assert os.path.basename(input[0]).replace("_1.fastq", "") == os.path.basename(output[0]) \
+            and os.path.basename(input[1]).replace("_2.fastq", "") == os.path.basename(output[0])
         # make output directory
         if not os.path.exists(os.path.dirname(output[0])):
             os.mkdir(os.path.dirname(output[0]))
@@ -554,7 +564,7 @@ rule epi2me_badread_assemble:
         "concatenated_Badread_reads/{SAMPLE}.fastq",
         "amplicon_sequences"
     output:
-        directory("artic_Badread_assemblies/{SAMPLE}")
+        directory("epi2me_Badread_assemblies/{SAMPLE}")
     resources:
 	    mem_mb=lambda wildcards, attempt: 1000 * attempt
     threads: 1
@@ -571,7 +581,8 @@ rule epi2me_badread_assemble:
                                 scheme,
                                 read_file,
                                 regions_covered,
-                                nextflow_path):
+                                nextflow_path,
+                                nextflow_cache):
             """run nanopore artic nextflow pipeline"""
             if not os.path.exists(read_file + ".gz"):
                 shell("gzip " + read_file)
@@ -579,10 +590,12 @@ rule epi2me_badread_assemble:
             shell_command = "venv/bin/python scripts/run_epi2me.py --main_nf " + main_nf + " "
             shell_command += "--force --sample_name " + os.path.basename(output_dir) + " "
             shell_command += "--work_root_dir " + output_dir + " --outdir " + output_dir + " "
+            shell_command += "--nxf_sing_cache " + nextflow_cache + " "
             shell_command += "--scheme_version ARTIC/" + scheme + " "
             shell_command += "--reads " + read_file + " --nextflow_path " + nextflow_path
             if not os.path.exists(read_file.replace(".gz", "")):
                 shell_command += " && gunzip " + read_file
+            print(shell_command)
             shell(shell_command)
             # cut off ends of assemblies that lie outside of the amplicon scheme
             filename = os.path.join(output_dir, "consensus.fa")
@@ -616,28 +629,34 @@ rule epi2me_badread_assemble:
                             params.primer_scheme,
                             input[0],
                             regions_covered,
-                            params.nextflow_path)
+                            params.nextflow_path,
+                            params.cache_dir)
 
 
 def aggregated_va_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("viridian_ART_assemblies/{sample}", sample=glob_wildcards(os.path.join("viridian_ART_assemblies", "{sample}")).sample)
+    return expand("viridian_ART_assemblies/{sample}", \
+        sample=glob_wildcards(os.path.join("viridian_ART_assemblies", "{sample}")).sample)
 
 def aggregated_vb_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("viridian_Badread_assemblies/{sample}", sample=glob_wildcards(os.path.join("viridian_Badread_assemblies", "{sample}")).sample)
+    return expand("viridian_Badread_assemblies/{sample}", \
+        sample=glob_wildcards(os.path.join("viridian_Badread_assemblies", "{sample}")).sample)
 
 def aggregated_aa_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("artic_ART_assemblies/{sample}", sample=glob_wildcards(os.path.join("artic_ART_assemblies", "{sample}")).sample)
+    return expand("artic_ART_assemblies/{sample}", \
+        sample=glob_wildcards(os.path.join("artic_ART_assemblies", "{sample}")).sample)
 
 def aggregated_eb_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("artic_Badread_assemblies/{sample}", sample=glob_wildcards(os.path.join("artic_Badread_assemblies", "{sample}")).sample)
+    return expand("epi2me_Badread_assemblies/{sample}", \
+        sample=glob_wildcards(os.path.join("epi2me_Badread_assemblies", "{sample}")).sample)
 
 def aggregated_tvs(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("truth_vcfs/{sample}", sample=glob_wildcards(os.path.join("truth_vcfs", "{sample}")).sample)
+    return expand("truth_vcfs/{sample}", \
+        sample=glob_wildcards(os.path.join("truth_vcfs", "{sample}")).sample)
 
 rule viridian_covid_truth_eval:
     input:
@@ -696,7 +715,7 @@ rule artic_covid_truth_eval:
                 os.mkdir(sub_dir)
         # list artic assemblies
         art_assemblies = sorted([f for f in input if "artic_ART" in f and len(f.split("/")) == 2])
-        badread_assemblies = sorted([f for f in input if "artic_Badread" in f and len(f.split("/")) == 2])
+        badread_assemblies = sorted([f for f in input if "epi2me_Badread" in f and len(f.split("/")) == 2])
         truth_vcfs = sorted([f for f in input if "truth_vcfs" in f])
         # run covid truth eval
         run_cte(params.primer_scheme,
@@ -712,18 +731,118 @@ rule artic_covid_truth_eval:
                 params.container_dir,
                 "artic")
 
-rule build_usher_phylogenies:
+rule artic_art_phylogeny:
     input:
-        aggregated_tvs,
-        aggregated_aa_assemblies,
-        aggregated_eb_assemblies,
-        aggregated_va_assemblies,
-        aggregated_vb_assemblies
+        aggregated_aa_assemblies
     output:
-        directory("usher_phylogenies")
+        directory("usher_phylogenies/artic_ART_phylogeny")
     threads:
         config["threads"]
     resources:
 	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=config["threads"]
-    shell:
-        "bash scripts/ucscVcfUsher.sh"
+    run:
+        # make output dirs
+        if not os.path.exists("usher_phylogenies"):
+            os.mkdir("usher_phylogenies")
+        # list assemblies
+        aa_assemblies = [v for v in input if len(v.split("/")) == 2]
+        # write tsv of assemblies for ushonium input
+        samples_rows = []
+        for a in aa_assemblies:
+            name = os.path.basename(a)
+            filename = os.path.join(a, "consensus_trimmed.fa")
+            samples_rows.append(name + "\t" + filename)
+        tsv_path = os.path.join("usher_phylogenies", "artic_ART.tsv")
+        with open(tsv_path, "w") as o:
+            o.write("\n".join(samples_rows))
+        # run ushonium to make the phylogeny
+        ushonium_command = 'singularity exec singularity/ushonium/ushonium.img make_jsonl.py --title "artic ART" --cpus ' + str(threads) + ' '
+        ushonium_command += tsv_path + " " + output[0]
+        shell(ushonium_command)
+
+rule epi2me_badread_phylogeny:
+    input:
+        aggregated_eb_assemblies
+    output:
+        directory("usher_phylogenies/epi2me_Badread_phylogeny")
+    threads:
+        config["threads"]
+    resources:
+	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=config["threads"]
+    run:
+        # make output dirs
+        if not os.path.exists("usher_phylogenies"):
+            os.mkdir("usher_phylogenies")
+        # list assemblies
+        eb_assemblies = [v for v in input if len(v.split("/")) == 2]
+        # write tsv of assemblies for ushonium input
+        samples_rows = []
+        for a in eb_assemblies:
+            name = os.path.basename(a)
+            filename = os.path.join(a, "consensus_trimmed.fa")
+            samples_rows.append(name + "\t" + filename)
+        tsv_path = os.path.join("usher_phylogenies", "epi2me_Badread.tsv")
+        with open(tsv_path, "w") as o:
+            o.write("\n".join(samples_rows))
+        # run ushonium to make the phylogeny
+        ushonium_command = 'singularity exec singularity/ushonium/ushonium.img make_jsonl.py --title "epi2me Badread" --cpus ' + str(threads) + ' '
+        ushonium_command += tsv_path + " " + output[0]
+        shell(ushonium_command)
+
+rule viridian_art_phylogeny:
+    input:
+        aggregated_va_assemblies
+    output:
+        directory("usher_phylogenies/viridian_ART_phylogeny")
+    threads:
+        config["threads"]
+    resources:
+	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=config["threads"]
+    run:
+        # make output dirs
+        if not os.path.exists("usher_phylogenies"):
+            os.mkdir("usher_phylogenies")
+        # list assemblies
+        va_assemblies = [v for v in input if len(v.split("/")) == 2]
+        # write tsv of assemblies for ushonium input
+        samples_rows = []
+        for a in va_assemblies:
+            name = os.path.basename(a)
+            filename = os.path.join(a, "consensus.fa")
+            samples_rows.append(name + "\t" + filename)
+        tsv_path = os.path.join("usher_phylogenies", "viridian_ART.tsv")
+        with open(tsv_path, "w") as o:
+            o.write("\n".join(samples_rows))
+        # run ushonium to make the phylogeny
+        ushonium_command = 'singularity exec singularity/ushonium/ushonium.img make_jsonl.py --title "viridian ART" --cpus ' + str(threads) + ' '
+        ushonium_command += tsv_path + ' ' + output[0]
+        shell(ushonium_command)
+
+rule viridian_badread_phylogeny:
+    input:
+        aggregated_vb_assemblies
+    output:
+        directory("usher_phylogenies/viridian_Badread_phylogeny")
+    threads:
+        config["threads"]
+    resources:
+	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=config["threads"]
+    run:
+        # make output dirs
+        if not os.path.exists("usher_phylogenies"):
+            os.mkdir("usher_phylogenies")
+        # list assemblies
+        vb_assemblies = [v for v in input if len(v.split("/")) == 2]
+        # write tsv of assemblies for ushonium input
+        samples_rows = []
+        for a in vb_assemblies:
+            name = os.path.basename(a)
+            filename = os.path.join(a, "consensus.fa")
+            samples_rows.append(name + "\t" + filename)
+        tsv_path = os.path.join("usher_phylogenies", "viridian_Badread.tsv")
+        with open(tsv_path, "w") as o:
+            o.write("\n".join(samples_rows))
+        # run ushonium to make the phylogeny
+        ushonium_command = 'singularity exec singularity/ushonium/ushonium.img make_jsonl.py --title "viridian Badread" --cpus ' + str(threads) + ' '
+        ushonium_command += tsv_path + ' ' + output[0]
+        shell(ushonium_command)
