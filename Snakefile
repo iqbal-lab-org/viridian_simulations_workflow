@@ -42,10 +42,10 @@ rule all:
         artic_art_input,
         artic_badread_input,
         truth_vcf_input,
-        #"cte_viridian_output",
-        #"cte_artic_output",
+        "cte_viridian_output",
+        "cte_artic_output",
         "usher_phylogenies/artic_ART_phylogeny",
-        #"usher_phylogenies/epi2me_Badread_phylogeny",
+        "usher_phylogenies/epi2me_Badread_phylogeny",
         "usher_phylogenies/viridian_ART_phylogeny",
         "usher_phylogenies/viridian_Badread_phylogeny"
 
@@ -595,6 +595,7 @@ rule epi2me_badread_assemble:
             shell_command += "--reads " + read_file + " --nextflow_path " + nextflow_path
             if not os.path.exists(read_file.replace(".gz", "")):
                 shell_command += " && gunzip " + read_file
+            print(shell_command)
             shell(shell_command)
             # cut off ends of assemblies that lie outside of the amplicon scheme
             filename = os.path.join(output_dir, "consensus.fa")
