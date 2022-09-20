@@ -42,7 +42,7 @@ rule all:
         artic_art_input,
         artic_badread_input,
         truth_vcf_input,
-        "cte_viridian_output",
+        #"cte_viridian_output",
         #"cte_artic_output",
         "usher_phylogenies/artic_ART_phylogeny",
         #"usher_phylogenies/epi2me_Badread_phylogeny",
@@ -755,7 +755,7 @@ rule artic_art_phylogeny:
         with open(tsv_path, "w") as o:
             o.write("\n".join(samples_rows))
         # run ushonium to make the phylogeny
-        ushonium_command = 'singularity/ushonium/Scripts/make_jsonl.py --title "artic ART" --cpus ' + str(threads) + ' '
+        ushonium_command = 'singularity exec singularity/ushonium/ushonium.img make_jsonl.py --title "artic ART" --cpus ' + str(threads) + ' '
         ushonium_command += tsv_path + " " + output[0]
         shell(ushonium_command)
 
@@ -784,7 +784,7 @@ rule epi2me_badread_phylogeny:
         with open(tsv_path, "w") as o:
             o.write("\n".join(samples_rows))
         # run ushonium to make the phylogeny
-        ushonium_command = 'singularity/ushonium/Scripts/make_jsonl.py --title "epi2me Badread" --cpus ' + str(threads) + ' '
+        ushonium_command = 'singularity exec singularity/ushonium/ushonium.img make_jsonl.py --title "epi2me Badread" --cpus ' + str(threads) + ' '
         ushonium_command += tsv_path + " " + output[0]
         shell(ushonium_command)
 
@@ -813,7 +813,7 @@ rule viridian_art_phylogeny:
         with open(tsv_path, "w") as o:
             o.write("\n".join(samples_rows))
         # run ushonium to make the phylogeny
-        ushonium_command = 'singularity/ushonium/Scripts/make_jsonl.py --title "viridian ART" --cpus ' + str(threads) + ' '
+        ushonium_command = 'singularity exec singularity/ushonium/ushonium.img make_jsonl.py --title "viridian ART" --cpus ' + str(threads) + ' '
         ushonium_command += tsv_path + ' ' + output[0]
         shell(ushonium_command)
 
@@ -842,6 +842,6 @@ rule viridian_badread_phylogeny:
         with open(tsv_path, "w") as o:
             o.write("\n".join(samples_rows))
         # run ushonium to make the phylogeny
-        ushonium_command = 'singularity/ushonium/Scripts/make_jsonl.py --title "viridian Badread" --cpus ' + str(threads) + ' '
+        ushonium_command = 'singularity exec singularity/ushonium/ushonium.img make_jsonl.py --title "viridian Badread" --cpus ' + str(threads) + ' '
         ushonium_command += tsv_path + ' ' + output[0]
         shell(ushonium_command)
