@@ -4,7 +4,7 @@ primer_scheme: V4
 scheme_dir: primer_schemes
 seed: 2022
 container_directory: singularity
-nextflow_path: /home/daniel/Documents/GitHub/viridian_simulations_workflow/nextflow
+nextflow_path: ./nextflow
 
 phastSim:
   tree_file: newick_output.nwk
@@ -16,8 +16,8 @@ split_amplicons:
   primer_dimer_probability: 0.001
   match_coverage_mean: 500
   match_coverage_sd: 20
-  mismatch_coverage_mean: 5
-  mismatch_coverage_sd: 1
+  mismatch_coverage_mean: 0
+  mismatch_coverage_sd: 0
 
 simulate_reads:
   illumina_read_length: 250
