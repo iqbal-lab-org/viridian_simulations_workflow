@@ -189,8 +189,8 @@ rule truth_vcfs:
             to_add = []
             variant_count = int(truth_vcf.splitlines()[-1].split("\t")[2])
             for dropped in dropped_amplicons:
-                start_pos = primer_df.loc[primer_df['name'] == dropped[0]].reset_index(drop=True)["ref_start"][0]
-                end_pos = primer_df.loc[primer_df['name'] == dropped[1]].reset_index(drop=True)["ref_end"][0]
+                start_pos = primer_df.loc[primer_df['name'] == dropped[0]].reset_index(drop=True)["ref_end"][0]
+                end_pos = primer_df.loc[primer_df['name'] == dropped[1]].reset_index(drop=True)["ref_start"][0]
                 variant_count += 1
                 variant_line = "MN908947.3\t" + str(start_pos) + "\t" + str(variant_count)
                 variant_line += "\tG\tN\t.\tDROPPED_AMP\tAMP_START=" + str(int(start_pos)-1) + ";AMP_END=" + str(int(end_pos)-1) + "\tGT\t1/1\n"
