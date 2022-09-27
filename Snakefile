@@ -425,7 +425,7 @@ rule viridian_art_assemble:
             """Function to run viridian on ART read sets"""
             viridian_command = "singularity run " + viridian_container + " run_one_sample \
                     --tech illumina \
-                    --ref_fasta " + reference_genome + " \
+                    --frs_threshold 0.6 --ref_fasta " + reference_genome + " \
                     --reads1 " + fw_read + " \
                     --reads2 " + rv_read + " \
                     --outdir " + output + "/"
