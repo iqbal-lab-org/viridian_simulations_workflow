@@ -465,7 +465,7 @@ rule viridian_badread_assemble:
             """Function to run viridian on nanopore read sets"""
             viridian_command = "singularity run " + viridian_container + " run_one_sample \
                     --tech ont \
-                    --ref_fasta " + reference_genome + " \
+                    --frs_threshold 0.6 --ref_fasta " + reference_genome + " \
                     --reads " + sample + " \
                     --outdir " + output + "/"
             shell(viridian_command)
