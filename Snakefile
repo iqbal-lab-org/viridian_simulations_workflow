@@ -46,7 +46,7 @@ rule all:
         "cte_artic_output",
         "usher_phylogenies/artic_ART_phylogeny",
         "usher_phylogenies/epi2me_Badread_phylogeny",
-        "usher_phylogenies/viridian_ART_phylogeny",
+       	"usher_phylogenies/viridian_ART_phylogeny",
         "usher_phylogenies/viridian_Badread_phylogeny"
 
 rule phastSim_evolution:
@@ -409,8 +409,6 @@ rule viridian_art_assemble:
         rv_read="concatenated_ART_reads/{SAMPLE}_2.fastq"
     output:
         directory("viridian_ART_assemblies/{SAMPLE}")
-    resources:
-	    mem_mb=lambda wildcards, attempt: 1000 * attempt
     threads: 1
     log:
         "logs/viridian_assemble/{SAMPLE}.log"
@@ -425,7 +423,6 @@ rule viridian_art_assemble:
             """Function to run viridian on ART read sets"""
             viridian_command = "singularity run " + viridian_container + " run_one_sample \
                     --tech illumina \
-                    --frs_threshold 0.6 --ref_fasta " + reference_genome + " \
                     --reads1 " + fw_read + " \
                     --reads2 " + rv_read + " \
                     --outdir " + output + "/"
@@ -450,8 +447,6 @@ rule viridian_badread_assemble:
         "concatenated_Badread_reads/{SAMPLE}.fastq"
     output:
         directory("viridian_Badread_assemblies/{SAMPLE}")
-    resources:
-	    mem_mb=lambda wildcards, attempt: 1000 * attempt
     threads: 1
     log:
         "logs/viridian_assemble/{SAMPLE}.log"
@@ -465,7 +460,6 @@ rule viridian_badread_assemble:
             """Function to run viridian on nanopore read sets"""
             viridian_command = "singularity run " + viridian_container + " run_one_sample \
                     --tech ont \
-                    --frs_threshold 0.6 --ref_fasta " + reference_genome + " \
                     --reads " + sample + " \
                     --outdir " + output + "/"
             shell(viridian_command)
@@ -636,22 +630,22 @@ rule epi2me_badread_assemble:
 def aggregated_va_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
     return expand("viridian_ART_assemblies/{sample}", \
-        sample=glob_wildcards(os.path.join("viridian_ART_assemblies", "{sample}")).sample)
+        sample=glob_wildcards(os.path.join("viridian_ART_assemblies", "{sample}", "consensus.fa")).sample)
 
 def aggregated_vb_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
     return expand("viridian_Badread_assemblies/{sample}", \
-        sample=glob_wildcards(os.path.join("viridian_Badread_assemblies", "{sample}")).sample)
+        sample=glob_wildcards(os.path.join("viridian_Badread_assemblies", "{sample}", "consensus.fa")).sample)
 
 def aggregated_aa_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
     return expand("artic_ART_assemblies/{sample}", \
-        sample=glob_wildcards(os.path.join("artic_ART_assemblies", "{sample}")).sample)
+        sample=glob_wildcards(os.path.join("artic_ART_assemblies", "{sample}", "consensus.fa")).sample)
 
 def aggregated_eb_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
     return expand("epi2me_Badread_assemblies/{sample}", \
-        sample=glob_wildcards(os.path.join("epi2me_Badread_assemblies", "{sample}")).sample)
+        sample=glob_wildcards(os.path.join("epi2me_Badread_assemblies", "{sample}", "consensus.fa")).sample)
 
 def aggregated_tvs(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
