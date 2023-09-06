@@ -29,13 +29,15 @@ The pipeline takes a SARS-CoV-2 phylogeny titled "newick_output.nwk" as input, f
 * ```threads```: Number of threads to extract amplicon sequences and run ART_illumina.
 * ```reference_genome```: A SARS-CoV-2 reference genome for simulations and read mapping.
 * ```primer_scheme```: The artic nCoV-2019 primer scheme (V3, V4 or V4.1).
-* ```primer_scheme_dir```: GitHub repository of primer schemes for the artic assembly pipeline (usually https://github.com/artic-network/primer-schemes).
+* ```scheme_dir```: GitHub repository of primer schemes for the artic assembly pipeline (usually https://github.com/artic-network/primer-schemes).
 * ```seed```: Start seed.
+* ```container_directory```: Path to the directory containing the singularity images.
+* ```nextflow_path```: Path to nextflow installation.
 
 ### phastSim:
 * ```tree_file```: Newick tree of SARS-CoV-2 simulated genomes.
 * ```output_dir```: Output directory name for phastSim
-* ```substitution_rate```: Substitution rate for phastSim to use.
+* ```rate_parameter```: Substitution rate for phastSim to use.
 
 ### split_amplicons:
 * ```random_dropout_probability```: Probability of random dropout of amplicons to simulate PCR errors.
@@ -52,7 +54,16 @@ The pipeline takes a SARS-CoV-2 phylogeny titled "newick_output.nwk" as input, f
 * ```apply_mask```: Mask low coverage bases in the simulated truth genomes.
 
 ### artic_assemble
-* ```nextflow_path```: Path to nextflow installation.
+* ```scheme_url```: URL to the GitHub repository containing the primer scheme specification.
+* ```main_nf```: Path to the Epi2me main nextflow file.
+* ```illumina_workflow_container```: Path to the artic illumina singularity container.
+
+### epi2me_badread_assemble
+* ```main_nf```: Path to the Epi2me main nextflow file.
+* ```nxf_sing_cache```: Directory for the nextflox cache.
+
+### viridian_assemble:
+* ```viridian_container```: Path to the viridian workflow singularity container.
 
 ## Testing
 To test the functions in ```scripts/error_modes.py```, run ```python tests/run_tests.py```
