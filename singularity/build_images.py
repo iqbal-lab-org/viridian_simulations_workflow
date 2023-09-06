@@ -24,7 +24,7 @@ for recipe in recipes:
     subprocess.run(build_command, shell=True, check=True)
 # build viridian image
 viridian_command = "cd singularity && git clone https://github.com/iqbal-lab-org/viridian_workflow"
-viridian_command += " && cd viridian_workflow && git checkout cb6c7a55cb145d74fc6352341a76a183b0c1b4e1 && "
+viridian_command += " && cd viridian_workflow && git checkout 94466d79560d1480cc003bb56e782bebfe31032c && "
 viridian_command += "sudo singularity build --force viridian_workflow.img Singularity.def && cd .."
 subprocess.run(viridian_command, shell=True, check=True)
 # build varifier image

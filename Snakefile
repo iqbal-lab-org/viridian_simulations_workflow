@@ -42,12 +42,8 @@ rule all:
         artic_art_input,
         artic_badread_input,
         truth_vcf_input
-        #"cte_viridian_output",
-        #"cte_artic_output"
-        #"usher_phylogenies/artic_ART_phylogeny",
-        #"usher_phylogenies/epi2me_Badread_phylogeny",
-       	#"usher_phylogenies/viridian_ART_phylogeny",
-        #"usher_phylogenies/viridian_Badread_phylogeny"
+        "cte_viridian_output",
+        "cte_artic_output"
 
 rule phastSim_evolution:
     input:
@@ -647,16 +643,10 @@ def aggregated_eb_assemblies(wildcards):
     return expand("epi2me_Badread_assemblies/{sample}", \
         sample=glob_wildcards(os.path.join("epi2me_Badread_assemblies", "{sample}", "consensus.fa")).sample)
 
-def aggregated_tvs(wildcards):
-    checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
-    return expand("truth_vcfs/{sample}", \
-        sample=glob_wildcards(os.path.join("truth_vcfs", "{sample}")).sample)
-
 rule viridian_covid_truth_eval:
     input:
         aggregated_va_assemblies,
         aggregated_vb_assemblies,
-        aggregated_tvs
     output:
         directory("cte_viridian_output")
     threads: 1
@@ -667,32 +657,30 @@ rule viridian_covid_truth_eval:
         primer_scheme=config["primer_scheme"],
     run:
         # make output dirs
-        for sub_dir in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
-            if not os.path.exists(sub_dir):
-                os.mkdir(sub_dir)
+        for o in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
+        if not os.path.exists(o):
+            os.mkdir(o)
         # list viridian assemblies
         art_assemblies = sorted([f for f in input if "viridian_ART" in f and len(f.split("/")) == 2])
         badread_assemblies = sorted([f for f in input if "viridian_Badread" in f and len(f.split("/")) == 2])
-        truth_vcfs = sorted([f for f in input if "truth_vcfs" in f])
         # run covid truth eval
         run_cte(params.primer_scheme,
-                art_assemblies,
-                os.path.join(output[0], "ART_assemblies"),
-                os.path.dirname(truth_vcfs[0]),
-                params.container_dir,
-                "viridian")
+            art_assemblies,
+            os.path.join(output[0], "ART_assemblies"),
+            "truth_vcfs",
+            params.container_dir,
+            "viridian")
         run_cte(params.primer_scheme,
-                badread_assemblies,
-                os.path.join(output[0], "Badread_assemblies"),
-                os.path.dirname(truth_vcfs[0]),
-                params.container_dir,
-                "viridian")
+            badread_assemblies,
+            os.path.join(output[0], "Badread_assemblies"),
+            "truth_vcfs",
+            params.container_dir,
+            "viridian")
 
 rule artic_covid_truth_eval:
     input:
         aggregated_aa_assemblies,
         aggregated_eb_assemblies,
-        aggregated_tvs
     output:
         directory("cte_artic_output")
     threads:
@@ -704,139 +692,22 @@ rule artic_covid_truth_eval:
 	    mem_mb=lambda wildcards, attempt: 1000 * attempt
     run:
         # make output dirs
-        for sub_dir in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
-            if not os.path.exists(sub_dir):
-                os.mkdir(sub_dir)
-        # list artic assemblies
+        for o in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
+            if not os.path.exists(o):
+                os.mkdir(o)
         art_assemblies = sorted([f for f in input if "artic_ART" in f and len(f.split("/")) == 2])
-        badread_assemblies = sorted([f for f in input if "epi2me_Badread" in f and len(f.split("/")) == 2])
-        truth_vcfs = sorted([f for f in input if "truth_vcfs" in f])
-        # run covid truth eval
+        badread_assemblies = sorted([f for f in input if "artic_Badread" in f and len(f.split("/")) == 2])
+        # run cte on the illumina assemblies
         run_cte(params.primer_scheme,
                 art_assemblies,
                 os.path.join(output[0], "ART_assemblies"),
-                os.path.dirname(truth_vcfs[0]),
+                "truth_vcfs",
                 params.container_dir,
                 "artic")
+        # run cte on the nanopore assemblies
         run_cte(params.primer_scheme,
                 badread_assemblies,
                 os.path.join(output[0], "Badread_assemblies"),
-                os.path.dirname(truth_vcfs[0]),
+                "truth_vcfs",
                 params.container_dir,
                 "artic")
-
-rule artic_art_phylogeny:
-    input:
-        aggregated_aa_assemblies
-    output:
-        directory("usher_phylogenies/artic_ART_phylogeny")
-    threads:
-        config["threads"]
-    resources:
-	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=config["threads"]
-    run:
-        # make output dirs
-        if not os.path.exists("usher_phylogenies"):
-            os.mkdir("usher_phylogenies")
-        # list assemblies
-        aa_assemblies = [v for v in input if len(v.split("/")) == 2]
-        # write tsv of assemblies for ushonium input
-        samples_rows = []
-        for a in aa_assemblies:
-            name = os.path.basename(a)
-            filename = os.path.join(a, "consensus_trimmed.fa")
-            samples_rows.append(name + "\t" + filename)
-        tsv_path = os.path.join("usher_phylogenies", "artic_ART.tsv")
-        with open(tsv_path, "w") as o:
-            o.write("\n".join(samples_rows))
-        # run ushonium to make the phylogeny
-        ushonium_command = 'singularity exec singularity/ushonium/ushonium.img make_jsonl.py --title "artic ART" --cpus ' + str(threads) + ' '
-        ushonium_command += tsv_path + " " + output[0]
-        shell(ushonium_command)
-
-rule epi2me_badread_phylogeny:
-    input:
-        aggregated_eb_assemblies
-    output:
-        directory("usher_phylogenies/epi2me_Badread_phylogeny")
-    threads:
-        config["threads"]
-    resources:
-	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=config["threads"]
-    run:
-        # make output dirs
-        if not os.path.exists("usher_phylogenies"):
-            os.mkdir("usher_phylogenies")
-        # list assemblies
-        eb_assemblies = [v for v in input if len(v.split("/")) == 2]
-        # write tsv of assemblies for ushonium input
-        samples_rows = []
-        for a in eb_assemblies:
-            name = os.path.basename(a)
-            filename = os.path.join(a, "consensus_trimmed.fa")
-            samples_rows.append(name + "\t" + filename)
-        tsv_path = os.path.join("usher_phylogenies", "epi2me_Badread.tsv")
-        with open(tsv_path, "w") as o:
-            o.write("\n".join(samples_rows))
-        # run ushonium to make the phylogeny
-        ushonium_command = 'singularity exec singularity/ushonium/ushonium.img make_jsonl.py --title "epi2me Badread" --cpus ' + str(threads) + ' '
-        ushonium_command += tsv_path + " " + output[0]
-        shell(ushonium_command)
-
-rule viridian_art_phylogeny:
-    input:
-        aggregated_va_assemblies
-    output:
-        directory("usher_phylogenies/viridian_ART_phylogeny")
-    threads:
-        config["threads"]
-    resources:
-	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=config["threads"]
-    run:
-        # make output dirs
-        if not os.path.exists("usher_phylogenies"):
-            os.mkdir("usher_phylogenies")
-        # list assemblies
-        va_assemblies = [v for v in input if len(v.split("/")) == 2]
-        # write tsv of assemblies for ushonium input
-        samples_rows = []
-        for a in va_assemblies:
-            name = os.path.basename(a)
-            filename = os.path.join(a, "consensus.fa")
-            samples_rows.append(name + "\t" + filename)
-        tsv_path = os.path.join("usher_phylogenies", "viridian_ART.tsv")
-        with open(tsv_path, "w") as o:
-            o.write("\n".join(samples_rows))
-        # run ushonium to make the phylogeny
-        ushonium_command = 'singularity exec singularity/ushonium/ushonium.img make_jsonl.py --title "viridian ART" --cpus ' + str(threads) + ' '
-        ushonium_command += tsv_path + ' ' + output[0]
-        shell(ushonium_command)
-
-rule viridian_badread_phylogeny:
-    input:
-        aggregated_vb_assemblies
-    output:
-        directory("usher_phylogenies/viridian_Badread_phylogeny")
-    threads:
-        config["threads"]
-    resources:
-	    mem_mb=lambda wildcards, attempt: 1000 * attempt, cpus=config["threads"]
-    run:
-        # make output dirs
-        if not os.path.exists("usher_phylogenies"):
-            os.mkdir("usher_phylogenies")
-        # list assemblies
-        vb_assemblies = [v for v in input if len(v.split("/")) == 2]
-        # write tsv of assemblies for ushonium input
-        samples_rows = []
-        for a in vb_assemblies:
-            name = os.path.basename(a)
-            filename = os.path.join(a, "consensus.fa")
-            samples_rows.append(name + "\t" + filename)
-        tsv_path = os.path.join("usher_phylogenies", "viridian_Badread.tsv")
-        with open(tsv_path, "w") as o:
-            o.write("\n".join(samples_rows))
-        # run ushonium to make the phylogeny
-        ushonium_command = 'singularity exec singularity/ushonium/ushonium.img make_jsonl.py --title "viridian Badread" --cpus ' + str(threads) + ' '
-        ushonium_command += tsv_path + ' ' + output[0]
-        shell(ushonium_command)
