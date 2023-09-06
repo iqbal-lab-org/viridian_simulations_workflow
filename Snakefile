@@ -41,7 +41,7 @@ rule all:
         viridian_badread_input,
         artic_art_input,
         artic_badread_input,
-        truth_vcf_input
+        truth_vcf_input,
         "cte_viridian_output",
         "cte_artic_output"
 
