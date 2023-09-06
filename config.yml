@@ -35,4 +35,4 @@ mask_assemblies:
   apply_mask: False
 
 viridian_assemble:
-  viridian_container: /nfs/research/zi/mhunt/Containers/vdn.20230110.4cd52c5.img
+  viridian_container: /nfs/research/zi/mhunt/Containers/viridian_workflow_v1.1.0.img

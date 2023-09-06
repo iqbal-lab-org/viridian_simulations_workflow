@@ -41,13 +41,13 @@ rule all:
         viridian_badread_input,
         artic_art_input,
         artic_badread_input,
-        truth_vcf_input,
-        "cte_viridian_output",
-        "cte_artic_output",
-        "usher_phylogenies/artic_ART_phylogeny",
-        "usher_phylogenies/epi2me_Badread_phylogeny",
-       	"usher_phylogenies/viridian_ART_phylogeny",
-        "usher_phylogenies/viridian_Badread_phylogeny"
+        truth_vcf_input
+        #"cte_viridian_output",
+        #"cte_artic_output"
+        #"usher_phylogenies/artic_ART_phylogeny",
+        #"usher_phylogenies/epi2me_Badread_phylogeny",
+       	#"usher_phylogenies/viridian_ART_phylogeny",
+        #"usher_phylogenies/viridian_Badread_phylogeny"
 
 rule phastSim_evolution:
     input:
@@ -421,7 +421,7 @@ rule viridian_art_assemble:
                                         output,
                                         viridian_container):
             """Function to run viridian on ART read sets"""
-            viridian_command = "singularity run " + viridian_container + " run_one_sample \
+            viridian_command = "PYTHONPATH=/nfs/research/zi/mhunt/git/cylon singularity run " + viridian_container + " run_one_sample \
                     --tech illumina \
                     --reads1 " + fw_read + " \
                     --reads2 " + rv_read + " \
@@ -458,7 +458,7 @@ rule viridian_badread_assemble:
                                         output,
                                         viridian_container):
             """Function to run viridian on nanopore read sets"""
-            viridian_command = "singularity run " + viridian_container + " run_one_sample \
+            viridian_command = "PYTHONPATH=/nfs/research/zi/mhunt/git/cylon singularity run " + viridian_container + " run_one_sample \
                     --tech ont \
                     --reads " + sample + " \
                     --outdir " + output + "/"
