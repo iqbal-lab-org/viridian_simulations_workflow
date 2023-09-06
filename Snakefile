@@ -658,8 +658,8 @@ rule viridian_covid_truth_eval:
     run:
         # make output dirs
         for o in [output[0], os.path.join(output[0], "ART_assemblies"), os.path.join(output[0], "Badread_assemblies")]:
-        if not os.path.exists(o):
-            os.mkdir(o)
+            if not os.path.exists(o):
+                os.mkdir(o)
         # list viridian assemblies
         art_assemblies = sorted([f for f in input if "viridian_ART" in f and len(f.split("/")) == 2])
         badread_assemblies = sorted([f for f in input if "viridian_Badread" in f and len(f.split("/")) == 2])
