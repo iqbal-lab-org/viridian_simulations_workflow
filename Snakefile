@@ -626,12 +626,12 @@ rule epi2me_badread_assemble:
 def aggregated_va_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
     return expand("viridian_ART_assemblies/{sample}", \
-        sample=glob_wildcards(os.path.join("viridian_ART_assemblies", "{sample}", "consensus.fa")).sample)
+        sample=glob_wildcards(os.path.join("viridian_ART_assemblies", "{sample}", "consensus.fa.gz")).sample)
 
 def aggregated_vb_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
     return expand("viridian_Badread_assemblies/{sample}", \
-        sample=glob_wildcards(os.path.join("viridian_Badread_assemblies", "{sample}", "consensus.fa")).sample)
+        sample=glob_wildcards(os.path.join("viridian_Badread_assemblies", "{sample}", "consensus.fa.gz")).sample)
 
 def aggregated_aa_assemblies(wildcards):
     checkpoint_output = checkpoints.split_amplicons.get(**wildcards).output[0]
