@@ -24,7 +24,7 @@ for recipe in recipes:
     subprocess.run(build_command, shell=True, check=True)
 # build viridian image
 viridian_command = "cd singularity && git clone https://github.com/iqbal-lab-org/viridian_workflow"
-viridian_command += " && cd viridian_workflow && git checkout cb6c7a55cb145d74fc6352341a76a183b0c1b4e1 && "
+viridian_command += " && cd viridian_workflow && git checkout 94466d79560d1480cc003bb56e782bebfe31032c && "
 viridian_command += "sudo singularity build --force viridian_workflow.img Singularity.def && cd .."
 subprocess.run(viridian_command, shell=True, check=True)
 # build varifier image
@@ -51,7 +51,7 @@ artic_nf_command += "sudo singularity build --force artic_nanopore.sif environme
 subprocess.run(artic_nf_command, shell=True, check=True)
 # build epi2me image
 epi2me_command = "cd singularity && git clone https://github.com/epi2me-labs/wf-artic epi2me && "
-epi2me_command += "cd epi2me && git checkout a60a1e1e73bde1971c680bd3d53076127dd63fc6 && mkdir nf_cache && cd ../.."
+epi2me_command += "cd epi2me && git checkout 218aa1d6d030e5682adf2ef339bc3581d6c04a35 && mkdir nf_cache && cd ../.."
 subprocess.run(epi2me_command, shell=True, check=True)
 # build ushonium image
 ushonium_command = "cd singularity && git clone https://github.com/martinghunt/ushonium && "

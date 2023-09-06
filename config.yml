@@ -1,10 +1,10 @@
-threads: 8
+threads: 64
 reference_genome: reference_genome.fasta
 primer_scheme: V4
 scheme_dir: primer_schemes
 seed: 2022
 container_directory: singularity
-nextflow_path: /home/daniel/Documents/GitHub/viridian_simulations_workflow/nextflow
+nextflow_path: /hps/nobackup/iqbal/dander/viridian_simulations_workflow/nextflow
 
 phastSim:
   tree_file: newick_output.nwk
@@ -16,8 +16,8 @@ split_amplicons:
   primer_dimer_probability: 0.001
   match_coverage_mean: 500
   match_coverage_sd: 20
-  mismatch_coverage_mean: 5
-  mismatch_coverage_sd: 1
+  mismatch_coverage_mean: 0
+  mismatch_coverage_sd: 0
 
 simulate_reads:
   illumina_read_length: 250
@@ -25,14 +25,14 @@ simulate_reads:
 artic_assemble:
   scheme_url: https://github.com/artic-network/primer-schemes
   main_nf: singularity/ncov2019-artic-nf/main.nf
-  illumina_workflow_container: singularity/ncov2019-artic-nf/artic_illumina.sif
+  illumina_workflow_container: singularity/ncov2019-artic-nf/artic-ncov2019-illumina.sif
 
 epi2me_badread_assemble:
-  main_nf: singularity/epi2me/main.nf
-  nxf_sing_cache: singularity/epi2me/nf_cache
+  main_nf: /nfs/research/zi/mhunt/Covid/Epi2me/wf-artic/main.nf
+  nxf_sing_cache: /hps/nobackup/iqbal/dander/viridian_simulations_workflow/singularity/epi2me/nf_cache
 
 mask_assemblies:
   apply_mask: False
 
 viridian_assemble:
-  viridian_container: singularity/viridian_workflow/viridian_workflow.img
+  viridian_container: /nfs/research/zi/mhunt/Containers/viridian_workflow_v1.1.0.img
