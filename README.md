@@ -2,7 +2,16 @@
 A workflow to simulate SARS-CoV-2 amplicons and reads for assembly with viridian.
 
 ## Overview
-A working pipeline to generate and assemble synthetic SARS-CoV-2 amplicons. Mismatches are detected between primers and their target sequences amd if present, PCR artifacts are simulated. With probabilities of 0.5, primers in amplicons are reverted to the reference primer target sequence or amplicon sequencing coverage is reduced for the amplicon. VGsim is used to simulate a SARS-CoV-2 phylogeny from a reference sequence and neutral evolution along the tree is then simulated with phastSim. A custom script splits the simulated genomes into amplicons based on the specified artic nCoV-2019 primer scheme and the error mode is simulated. Read sequencing is simulated using art_illumina for simulated Illumina reads or Badread for Nanopore reads, at coverages determined by the previous step. Viridian_workflow is run to map the simulated reads to the reference sequence and assemble into a consensus sequence. The simulated sequences are then masked, whereby bases that are only represented by low coverage amplicons are masked with Ns.
+A working pipeline to generate and assemble synthetic SARS-CoV-2 amplicons.
+
+The main steps are outlined below:
+* The pipeline begins by simulating neutral evolution from the SARS-CoV-2 reference sequence using PhastSim and a reference SARS-CoV-2 phylogeny.
+* (Varifier)[https://github.com/epi2me-labs/wf-artic] is then used to generate truth VCFs for each simulated assembly using the SARD-CoV-2 reference sequence.
+* The primer sequences of the specified amplicon scheme are mapped to the simulated assemblies using [bwa aln](https://bio-bwa.sourceforge.net/) and the amplicon sequence extracted for each primer pair. There is then a check for mismatches between each primer and the simulated assembly. If at least one mismatch is present, PRC artifacts are simulated with equal probability: the amplicon sequencing coverage is reduced to 0 or the sequence that the primer has mapped to is reverted to the reference sequence. Random amplicon dropout is also simulated with a default probability of 0.001. The sequencing coverage of amplicons containing no artifacts is simulated using a normal distribution with mean 500 and standard deviation 20 and each amplicon is written to a FASTA file.
+* Sequencing reads are simulated for each amplicon using the sequencing coverages determined in the previous step. Illumina reads are simulated using [ART illumina](https://www.niehs.nih.gov/research/resources/software/biostatistics/art/index.cfm) and Nanopore reads are simulated using [Badread](https://github.com/rrwick/Badread).
+* Illumina reads are then assembled using the [Connor Lab artic nextflow pipeline](https://github.com/connor-lab/ncov2019-artic-nf) and [viridian workflow](https://github.com/iqbal-lab-org/viridian_workflow) and Nanopore reads are assembled using [Epi2me](https://github.com/epi2me-labs/wf-artic) and [viridian workflow](https://github.com/iqbal-lab-org/viridian_workflow).
+* ARTIC and Epi2me assemblies are then trimmed to remove all bases outside of the specified amplicon scheme.
+* [Covid-truth-eval](https://github.com/iqbal-lab-org/covid-truth-eval) is then using to generate TSVs summarising the assembly accuracy for each tool.
 
 ## Installation
 ```Python
