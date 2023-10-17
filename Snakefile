@@ -2,10 +2,7 @@ import glob
 import gzip
 import os
 import pickle
-import pysam
-import random
 import shutil
-from tqdm import tqdm
 
 from scripts.error_modes import clean_genome, find_primer_scheme
 from scripts.make_plots import run_cte, run_varifier
