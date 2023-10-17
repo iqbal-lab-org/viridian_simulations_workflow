@@ -148,7 +148,6 @@ nextflow
 # outputs
 phastSim_output
 simulated_genomes
-newick_output.nwk
 tree_populations.txt
 amplicon_sequences
 updated_sequences
