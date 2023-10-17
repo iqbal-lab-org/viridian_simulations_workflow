@@ -9,13 +9,10 @@ download_command = "wget https://github.com/nextflow-io/nextflow/releases/downlo
 download_command += " && mv nextflow-21.04.3-all nextflow && chmod 777 nextflow"
 subprocess.run(download_command, shell=True, check=True)
 # iterate through list of recipes to build the image
-recipes = ["VGsim",
-        "phastSim",
+recipes = ["phastSim",
         "ART",
         "Badread",
-        "Map",
-        "Mafft",
-        "bcftools"]
+        "Map"]
 # build image
 for recipe in recipes:
     build_command = "singularity build --force --fakeroot singularity/images/"
@@ -37,12 +34,6 @@ cte_command = "cd singularity && git clone https://github.com/iqbal-lab-org/covi
 cte_command += " && cd covid-truth-eval && git checkout 9cd94b8ce2ef54d5f6168369567dd49e2db92d2e && "
 cte_command += "sudo singularity build --force cte.img Singularity.def && cd .."
 subprocess.run(cte_command, shell=True, check=True)
-# build usher image
-usher_command = "cd singularity && git clone https://github.com/yatisht/usher.git"
-usher_command += " && cd usher && git checkout 4f620fe3d8cd7e013675e15a0fb9129a0fc502c5 && "
-usher_command += "docker build --no-cache -t usher_docker install/. && "
-usher_command += "sudo singularity build --force usher.sif docker-daemon://usher_docker:latest && cd .."
-subprocess.run(usher_command, shell=True, check=True)
 # fetch ncov2019-artic-nf
 artic_nf_command = "cd singularity && git clone https://github.com/connor-lab/ncov2019-artic-nf && "
 artic_nf_command += "cd ncov2019-artic-nf && git checkout 8af5152cf7107c3a369b996f5bad3473d329050c && "
@@ -53,8 +44,3 @@ subprocess.run(artic_nf_command, shell=True, check=True)
 epi2me_command = "cd singularity && git clone https://github.com/epi2me-labs/wf-artic epi2me && "
 epi2me_command += "cd epi2me && git checkout 218aa1d6d030e5682adf2ef339bc3581d6c04a35 && mkdir nf_cache && cd ../.."
 subprocess.run(epi2me_command, shell=True, check=True)
-# build ushonium image
-ushonium_command = "cd singularity && git clone https://github.com/martinghunt/ushonium && "
-ushonium_command += "cd ushonium && git checkout 930a0d16b576ec815b71284c8387edebee6cd9dc && "
-ushonium_command += "sudo singularity build --force ushonium.img Singularity.def && cd ../.."
-subprocess.run(ushonium_command, shell=True, check=True)
