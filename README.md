@@ -11,7 +11,7 @@ The main steps are outlined below:
 * Sequencing reads are simulated for each amplicon using the sequencing coverages determined in the previous step. Illumina reads are simulated using [ART illumina](https://www.niehs.nih.gov/research/resources/software/biostatistics/art/index.cfm) and Nanopore reads are simulated using [Badread](https://github.com/rrwick/Badread).
 * Illumina reads are then assembled using the [Connor Lab artic nextflow pipeline](https://github.com/connor-lab/ncov2019-artic-nf) and [viridian workflow](https://github.com/iqbal-lab-org/viridian_workflow) and Nanopore reads are assembled using [Epi2me](https://github.com/epi2me-labs/wf-artic) and [viridian workflow](https://github.com/iqbal-lab-org/viridian_workflow).
 * Assemblies generated with the [Connor lab pipeline](https://github.com/connor-lab/ncov2019-artic-nf) and [Epi2me](https://github.com/epi2me-labs/wf-artic) are then trimmed to remove all bases outside of the specified amplicon scheme.
-* [Covid-truth-eval](https://github.com/iqbal-lab-org/covid-truth-eval) is then using to generate TSVs summarising the assembly accuracy for each tool.
+* [Covid-truth-eval](https://github.com/iqbal-lab-org/covid-truth-eval) is then used to generate TSV files summarising the assembly accuracy for each tool.
 
 ## Installation
 ```Python
