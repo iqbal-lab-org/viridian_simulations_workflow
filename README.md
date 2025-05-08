@@ -26,11 +26,14 @@ pip3 install -r requirements.txt
 python3 singularity/build_images.py
 ```
 
+## Inputs
+
+The pipeline simulates assemblies from a single reference assembly that is included in this repository (`reference_genome.fasta`) along a reference SARS-CoV-2 phylogeny that is also included here (`newick_output.nwk`).
+
 ## Usage
 ```
 snakemake --cores <threads>
 ```
-The pipeline takes a SARS-CoV-2 phylogeny titled "newick_output.nwk" as input, from which assemblies are simulated relative to a reference.
 
 ## Configuration
 
